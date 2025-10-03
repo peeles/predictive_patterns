@@ -1,0 +1,25 @@
+{
+  "name": "laravel-frontend",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "vue": "^3.5.13",
+    "vue-router": "^4.5.0",
+    "pinia": "^2.3.0",
+    "pinia-plugin-persistedstate": "^3.2.3",
+    "laravel-echo": "^1.16.1",
+    "pusher-js": "^8.4.0-rc2",
+    "axios": "^1.7.9"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.2.1",
+    "vite": "^6.0.3",
+    "@tailwindcss/vite": "^4.0.0-beta.7",
+    "tailwindcss": "^4.0.0-beta.7"
+  }
+}
