@@ -1,4 +1,6 @@
 import { useAuthStore } from '../stores/auth'
+import { ensureCsrfCookie } from './csrf'
+import { getCookie } from '../utils/cookies'
 
 const PROTOCOL_VERSION = '7'
 const CLIENT_NAME = 'js'
@@ -335,6 +337,8 @@ class BroadcastManager {
     }
 
     async authorize(entry) {
+        await ensureCsrfCookie()
+
         const headers = buildAuthHeaders()
         const response = await fetch(this.config.authEndpoint, {
             method: 'POST',
@@ -707,16 +711,6 @@ function normalisePort(value) {
     }
 
     return null
-}
-
-function getCookie(name) {
-    if (typeof document === 'undefined') {
-        return null
-    }
-
-    const escaped = name.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&')
-    const match = document.cookie.match(new RegExp(`(?:^|; )${escaped}=([^;]*)`))
-    return match ? match[1] : null
 }
 
 function resolveEnv(env, keys, defaultValue = null) {

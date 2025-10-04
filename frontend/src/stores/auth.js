@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import api from '../services/apiClient'
+import {ensureCsrfCookie} from "../services/csrf.js";
 
 export const useAuthStore = defineStore('auth', () => {
     const token = ref(null)
@@ -32,6 +33,8 @@ export const useAuthStore = defineStore('auth', () => {
 
     async function login(credentials) {
         const { email, password } = credentials ?? {}
+        await ensureCsrfCookie()
+
         const response = await api.post('/auth/login', { email, password })
         const payload = extractAuthPayload(response)
         token.value = payload.accessToken ?? null
