@@ -10,10 +10,10 @@ key:
 	docker compose exec backend php artisan key:generate
 
 fresh:
+	docker compose exec backend php artisan migrate:fresh --seed
 	docker compose exec backend php artisan cache:clear
 	docker compose exec backend php artisan config:clear
 	docker compose exec backend php artisan config:cache
-	docker compose exec backend php artisan migrate:fresh --seed
 
 routes:
 	docker compose exec backend php artisan route:clear

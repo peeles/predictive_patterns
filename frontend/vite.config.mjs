@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
-const target = process.env.VITE_PROXY_TARGET || 'http://localhost:8080'
+const target = process.env.VITE_PROXY_TARGET || 'http://localhost:8000'
 
 export default defineConfig({
   plugins: [vue(), tailwindcss()],
