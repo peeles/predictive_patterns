@@ -1,11 +1,21 @@
-
 import axios from 'axios'
 import { useAuthStore } from '../stores/auth'
 import { useRequestStore } from '../stores/request'
 import { notifyError } from '../utils/notifications'
 
+// Determine the API base URL, using VITE_API_URL if set, else default to '/api/v1'
+const apiBaseUrl = (() => {
+    const envUrl = import.meta.env.VITE_API_URL;
+    if (!envUrl) {
+        return '/api/v1';
+    }
+
+    const normalized = envUrl.replace(/\/+$/, '');
+    return `${normalized}/api/v1`;
+})();
+
 const apiClient = axios.create({
-    baseURL: '/api/v1',
+    baseURL: apiBaseUrl,
     timeout: 15000,
     validateStatus: s => s >= 200 && s < 300,
     withCredentials: true,

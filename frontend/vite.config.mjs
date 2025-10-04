@@ -16,13 +16,16 @@ export default defineConfig({
     },
   },
   server: {
-    host: true,
+    host: '0.0.0.0',
     port: 3000,
     proxy: {
       '/api': { target, changeOrigin: true },
       '/broadcasting': { target, changeOrigin: true },
       // no /sanctum proxy needed in bearer flow
     },
+    watch: {
+      usePolling: true
+    }
   },
   test: {
     environment: 'jsdom',
