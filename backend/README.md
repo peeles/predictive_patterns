@@ -1,61 +1,143 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# Backend (Laravel API)
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+The backend is a Laravel 10 application responsible for serving predictive risk analytics and orchestrating crime ingestion pipelines.
 
-## About Laravel
+## Key features
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+- **Hex aggregation API** – `/api/hexes` and `/api/hexes/geojson` expose validated aggregation responses with PSR-12 compliant controllers and DTO-backed services.
+- **H3 integration** – services gracefully resolve either the PHP H3 extension or compatible FFI bindings at runtime.
+- **Police archive ingestion** – resilient downloader normalises, deduplicates, and bulk inserts police records with H3 enrichment.
+- **MCP support** – `php artisan mcp:serve` exposes the API’s capabilities to Model Context Protocol compatible clients and now includes discovery helpers such as `get_categories`, `list_ingested_months`, and `get_top_cells`.
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+## Project conventions
 
-## Learning Laravel
+- Strict types and [PSR-12](https://www.php-fig.org/psr/psr-12/) formatting across the codebase.
+- Request validation lives in `App\Http\Requests`; spatial constraints are handled via dedicated `Rule` classes.
+- Services return typed Data Transfer Objects to keep controllers lean and serialisation explicit.
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
+## Local setup
 
-You may also try the [Laravel Bootcamp](https://bootcamp.laravel.com), where you will be guided through building a modern Laravel application from scratch.
+```bash
+composer install
+cp .env.example .env
+php artisan key:generate
+php artisan migrate --seed
+php artisan serve
+```
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+### Machine learning dependencies
 
-## Laravel Sponsors
+Install [PHP-ML](https://github.com/php-ai/php-ml) to unlock the full training toolchain. The lightweight namespace shims that
+ship with the application keep the test suite green when the package is absent, but production and CI builds must depend on the
+official library for full algorithm support and optimised math primitives.
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
+```bash
+composer require php-ai/php-ml
+```
 
-### Premium Partners
+When using Docker, run the same command inside the backend container so the dependency is cached in the image layers and
+available to queue workers without an interactive shell step:
 
-- **[Vehikl](https://vehikl.com)**
-- **[Tighten Co.](https://tighten.co)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Redberry](https://redberry.international/laravel-development)**
-- **[Active Logic](https://activelogic.com)**
+```bash
+docker compose exec backend composer require php-ai/php-ml
+```
 
-## Contributing
+Run the automated test suite:
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+```bash
+php artisan test
+```
 
-## Code of Conduct
+## Available commands
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+| Command | Description |
+|---------|-------------|
+| `php artisan crimes:ingest 2024-03` | Download and import a police archive for March 2024. |
+| `php artisan schedule:run` | Trigger scheduled ingestion or housekeeping tasks. |
+| `php artisan mcp:serve` | Start the Model Context Protocol bridge for the Predictive Patterns API. |
 
-## Security Vulnerabilities
+## HTTP endpoints
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/hexes` | Aggregated counts for H3 cells intersecting a bounding box. Supports `bbox`, `resolution`, `from`, `to`, and `crime_type` query parameters. |
+| `GET` | `/api/v1/heatmap/{z}/{x}/{y}` | Tile-friendly aggregate payload for the requested XYZ tile. Supports optional `ts_start`, `ts_end`, and `horizon` filters. |
+| `GET` | `/api/hexes/geojson` | GeoJSON feature collection for aggregated H3 cells. |
+| `GET` | `/api/export` | Download aggregated data as CSV (default) or GeoJSON via `format=geojson`. Accepts the same filters as `/api/hexes`. |
+| `POST` | `/api/nlq` | Ask a natural-language question and receive a structured answer describing the translated query. |
 
-## License
+### Authentication
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+Authenticated routes require either an `Authorization: Bearer <token>` header issued by the login endpoint or an `X-API-Key` header when using static API keys. Query string tokens (for example, `?api_token=...`) are not accepted.
+
+## MCP toolset
+
+| Tool | Purpose |
+|------|---------|
+| `aggregate_hexes` | Aggregate crime counts for a bounding box. |
+| `export_geojson` | Produce a GeoJSON feature collection for crime aggregates. |
+| `get_categories` | List distinct crime categories available in the datastore. |
+| `get_top_cells` | Return the highest ranking H3 cells for the supplied filters. |
+| `ingest_crime_data` | Queue a background job to ingest a month of police crime data. |
+| `list_ingested_months` | Summarise the months currently present in the relational store. |
+
+
+## Environment variables
+
+| Variable | Purpose | Default |
+|----------|---------|---------|
+| `API_TOKENS` | Comma-separated list of allowed API tokens for authenticating requests. | _(empty)_ |
+| `API_RATE_LIMIT` | Requests per minute allowed for each client IP when using the API. | `60` |
+| `API_RATE_LIMIT_AUTH_LOGIN` | Requests per minute allowed for login attempts per email/IP combination. | `10` |
+| `API_RATE_LIMIT_AUTH_REFRESH` | Requests per minute allowed for refresh attempts per token/IP combination. | `60` |
+| `POLICE_ARCHIVE_TIMEOUT` | Override HTTP timeout (seconds) for police data downloads. | `120` |
+| `POLICE_ARCHIVE_RETRIES` | Number of retry attempts for failed archive downloads. | `3` |
+| `QUEUE_CONNECTION` | Queue backend for ingestion jobs (`sync`, `database`, etc.). | `sync` |
+| `BROADCAST_DRIVER` | Primary broadcast driver. Laravel Reverb is used by default. | `reverb` |
+| `BROADCAST_ENABLE_PUSHER_FALLBACK` | Opt-in flag that retries failed broadcasts via the configured Pusher connection and logs telemetry. Requires `PUSHER_APP_ID`, `PUSHER_APP_KEY`, and `PUSHER_APP_SECRET`. | `false` |
+| `TRAINING_QUEUE_DRIVER` | Backend driver used for the dedicated training queue. | `redis` |
+| `TRAINING_QUEUE_CONNECTION` | Redis connection name (falls back to `REDIS_QUEUE_CONNECTION`). | Same as `REDIS_QUEUE_CONNECTION` |
+| `TRAINING_QUEUE` | Queue name used by the long-running training worker. | `training` |
+| `TRAINING_QUEUE_RETRY_AFTER` | Seconds before a stalled training job is retried. | `1800` |
+
+Keep secrets such as database credentials and API keys in the `.env` file and never commit them to version control.
+
+## Model training queue
+
+Long-running model training jobs should be isolated from the default queue so they are not re-queued mid-flight.
+
+1. Configure the training queue connection via the environment variables above. By default the queue uses Redis with a
+   generous `retry_after` of 1,800 seconds (30 minutes).
+2. Run a dedicated worker that honours the long timeout and higher memory ceiling:
+
+   ```bash
+   php artisan queue:work training --timeout=1740 --memory=1024
+   ```
+
+   The timeout is deliberately shorter than `retry_after` so the job can finish gracefully without being reclaimed by
+   the queue worker supervisor.
+3. Monitor the worker's RSS to ensure memory stays within the `--memory` limit. Because CLI processes can leak over
+   time, keep an eye on `dmesg` and other system logs for out-of-memory kill events.
+4. When supervising the worker with `supervisord`, set `stopwaitsecs` longer than the slowest training run so the
+   process receives enough time to shut down cleanly. An example program stanza looks like:
+
+   ```ini
+   [program:training-worker]
+   command=php /var/www/html/artisan queue:work training --timeout=1740 --memory=1024
+   stopwaitsecs=1900
+   autostart=true
+   autorestart=true
+   ```
+
+### Debugging stalled training jobs
+
+- Run queue workers in verbose mode so uncaught exceptions reach the console: `php artisan queue:work training --timeout=1740 --memory=1024 --verbose`. Combine this with `.env` settings such as `APP_DEBUG=true` and `LOG_LEVEL=debug` to ensure PHP error reporting is surfaced instead of being swallowed by output buffering.
+
+## Dataset ingestion queue
+
+- Local file uploads now dispatch a background job to generate previews and derive spatial features. Ensure the default queue worker is running (`php artisan queue:work --timeout=120 --memory=512 --verbose`) so datasets transition from `processing` to `ready` after the HTTP upload completes.
+- Failures during background processing will publish a `DatasetStatusUpdated` event with the error message stored in the dataset metadata under `ingest_error`.
+- If no messages reach the worker logs, assume the process is being killed externally (for example, container memory limits or supervisor timeouts) and inspect the host's service manager or kernel logs.
+- The training service now profiles buffered features and will throw an exception if NaN or infinite values are encountered. Watch for warnings about near-constant or extremely large feature magnitudes—they indicate the dataset needs normalisation before retrying.
+- When diagnosing convergence issues, sample the dataset and retry with a much smaller file to confirm the algorithm completes. If the small run works but the full dataset does not, batch the training set or ingest data in windows to stay within memory and timeout budgets.
