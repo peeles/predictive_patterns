@@ -1,113 +1,113 @@
-import { ref, computed } from 'vue'
 import { defineStore } from 'pinia'
-import axios from 'axios'
+import { computed, ref } from 'vue'
+import api from '../services/apiClient'
 
 export const useAuthStore = defineStore('auth', () => {
-  const user = ref(null)
-  const token = ref(localStorage.getItem('token') || null)
-  const loading = ref(false)
-  const error = ref(null)
+    const token = ref(null)
+    const user = ref(null)
+    const hasRefreshSession = ref(typeof window !== 'undefined')
+    const hasAttemptedRestore = ref(false)
+    let restorePromise = null
 
-  const isAuthenticated = computed(() => !!token.value && !!user.value)
-
-  async function getCsrfCookie() {
-    try {
-      await axios.get('/sanctum/csrf-cookie')
-    } catch (err) {
-      console.error('Failed to get CSRF cookie:', err)
+    function clearState() {
+        token.value = null
+        user.value = null
     }
-  }
 
-  async function login(credentials) {
-    loading.value = true
-    error.value = null
+    function extractAuthPayload(rawResponse) {
+        const body = rawResponse?.data
 
-    try {
-      // Get CSRF cookie first
-      await getCsrfCookie()
+        if (body && typeof body === 'object') {
+            if ('accessToken' in body || 'user' in body) {
+                return body
+            }
 
-      // Small delay to ensure cookie is set
-      await new Promise(resolve => setTimeout(resolve, 100))
+            if (body?.data && typeof body.data === 'object') {
+                return body.data
+            }
+        }
 
-      const response = await axios.post('/api/login', credentials)
-
-      token.value = response.data.token
-      user.value = response.data.user
-      localStorage.setItem('token', token.value)
-
-      return true
-    } catch (err) {
-      error.value = err.response?.data?.message || 'Login failed'
-      throw err
-    } finally {
-      loading.value = false
+        return {}
     }
-  }
 
-  async function register(userData) {
-    loading.value = true
-    error.value = null
-
-    try {
-      // Get CSRF cookie first
-      await getCsrfCookie()
-
-      // Small delay to ensure cookie is set
-      await new Promise(resolve => setTimeout(resolve, 100))
-
-      const response = await axios.post('/api/register', userData)
-
-      token.value = response.data.token
-      user.value = response.data.user
-      localStorage.setItem('token', token.value)
-
-      return true
-    } catch (err) {
-      error.value = err.response?.data?.message || 'Registration failed'
-      throw err
-    } finally {
-      loading.value = false
+    async function login(credentials) {
+        const { email, password } = credentials ?? {}
+        const response = await api.post('/auth/login', { email, password })
+        const payload = extractAuthPayload(response)
+        token.value = payload.accessToken ?? null
+        user.value = payload.user ?? null
+        hasRefreshSession.value = true
+        hasAttemptedRestore.value = true
+        return user.value
     }
-  }
 
-  async function logout() {
-    try {
-      await axios.post('/api/logout')
-    } finally {
-      user.value = null
-      token.value = null
-      localStorage.removeItem('token')
+    async function refresh(options = {}) {
+        const { force = false } = options
+
+        if (!force && !hasRefreshSession.value) {
+            hasAttemptedRestore.value = true
+            return null
+        }
+
+        try {
+            const response = await api.post('/auth/refresh')
+            const payload = extractAuthPayload(response)
+            token.value = payload.accessToken ?? null
+            user.value = payload.user ?? null
+            hasRefreshSession.value = true
+            hasAttemptedRestore.value = true
+            return token.value
+        } catch {
+            hasRefreshSession.value = false
+            clearState()
+            hasAttemptedRestore.value = true
+            return null
+        }
     }
-  }
 
-  async function checkAuth() {
-    if (!token.value) return false
-
-    try {
-      const response = await axios.get('/api/user')
-      user.value = response.data
-      return true
-    } catch (err) {
-      user.value = null
-      token.value = null
-      localStorage.removeItem('token')
-      return false
+    async function logout() {
+        try {
+            await api.post('/auth/logout')
+        } catch {
+            // ignore logout errors
+        }
+        hasRefreshSession.value = false
+        hasAttemptedRestore.value = true
+        clearState()
     }
-  }
 
-  return {
-    user,
-    token,
-    loading,
-    error,
-    isAuthenticated,
-    login,
-    register,
-    logout,
-    checkAuth
-  }
-}, {
-  persist: {
-    paths: ['user']
-  }
+    async function restoreSession() {
+        if (hasAttemptedRestore.value) {
+            return token.value
+        }
+
+        if (!restorePromise) {
+            restorePromise = (hasRefreshSession.value ? refresh() : Promise.resolve(null)).finally(() => {
+                hasAttemptedRestore.value = true
+                restorePromise = null
+            })
+        }
+
+        return restorePromise
+    }
+
+    const isAuthenticated = computed(() => Boolean(token.value))
+    const role = computed(() => user.value?.role ?? '')
+    const isAdmin = computed(() => role.value === 'admin')
+    const canRefresh = computed(() => hasRefreshSession.value)
+    const hasAttemptedSessionRestore = computed(() => hasAttemptedRestore.value)
+
+    return {
+        token,
+        user,
+        isAuthenticated,
+        role,
+        isAdmin,
+        login,
+        refresh,
+        logout,
+        restoreSession,
+        canRefresh,
+        hasAttemptedSessionRestore,
+    }
 })

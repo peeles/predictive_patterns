@@ -1,16 +1,12 @@
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
-import piniaPluginPersistedstate from 'pinia-plugin-persistedstate'
-import router from './router'
+import { persistPlugin } from './stores/plugins/persist'
 import App from './App.vue'
+import router from './router'
 import './assets/main.css'
-import './utils/axios'
-import './utils/echo'
-
-const pinia = createPinia()
-pinia.use(piniaPluginPersistedstate)
 
 const app = createApp(App)
-app.use(pinia)
-app.use(router)
-app.mount('#app')
+const pinia = createPinia()
+pinia.use(persistPlugin)
+
+app.use(pinia).use(router).mount('#app')
