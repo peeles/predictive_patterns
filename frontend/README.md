@@ -7,6 +7,12 @@ npm install
 npm run dev
 ```
 
+## CSRF protection
+
+- The app bootstraps the Laravel Sanctum CSRF cookie on startup by calling `/sanctum/csrf-cookie` with `withCredentials` enabled. This happens automatically through `ensureCsrfCookie()` in `src/services/csrf.js` and is invoked before any authenticated traffic leaves the SPA.
+- Keep the frontend and API on the same origin during development (for example, always use `http://localhost` _or_ `http://127.0.0.1`). Mixing hostnames or protocols causes browsers to treat the requests as cross-site and invalidate the CSRF token stored in the session cookie.
+- Leave Laravel's CSRF middleware enabled on the backend. The middleware is part of the Sanctum stateful pipeline and is required for cookie-based authentication to remain secure.
+
 ### Linting
 
 ```bash

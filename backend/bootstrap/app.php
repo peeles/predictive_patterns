@@ -2,6 +2,7 @@
 
 use App\Exceptions\ApiExceptionRenderer;
 use App\Http\Middleware\EnsureApiTokenIsValid;
+use App\Http\Middleware\VerifyCsrfToken;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
 use Illuminate\Cookie\Middleware\EncryptCookies;
 use Illuminate\Foundation\Application;
@@ -11,6 +12,9 @@ use Illuminate\Http\Middleware\HandleCors;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\Routing\Middleware\ThrottleRequests;
+use Illuminate\Session\Middleware\AuthenticateSession;
+use Illuminate\Session\Middleware\StartSession;
+use Illuminate\View\Middleware\ShareErrorsFromSession;
 use Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful;
 
 return Application::configure(basePath: dirname(__DIR__))
@@ -26,7 +30,7 @@ return Application::configure(basePath: dirname(__DIR__))
         channels: __DIR__.'/../routes/channels.php',
         health: '/up',
     )
-    ->withMiddleware(function (Middleware $middleware) {
+    ->withMiddleware(function (Middleware $middleware): void {
         $middleware->use([
             EncryptCookies::class,
             AddQueuedCookiesToResponse::class,
@@ -35,7 +39,6 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->group('api', [
             SubstituteBindings::class,
-            EnsureFrontendRequestsAreStateful::class,
         ]);
 
         $middleware->alias([

@@ -2,8 +2,8 @@ import axios from 'axios'
 import { useAuthStore } from '../stores/auth'
 import { useRequestStore } from '../stores/request'
 import { notifyError } from '../utils/notifications'
-import {ensureCsrfCookie} from "./csrf.js";
-import {getCookie} from "../utils/cookies.js";
+import { ensureCsrfCookie } from './csrf'
+import { getCookie } from '../utils/cookies'
 
 // Determine the API base URL, using VITE_API_URL if set, else default to '/api/v1'
 const apiBaseUrl = (() => {
@@ -121,10 +121,8 @@ apiClient.interceptors.response.use(
                 return true
             }
 
-            const message = response?.data?.messagex
-            return typeof message === 'string' && CSRF_ERROR_CODES.has(message);
-
-
+            const message = response?.data?.message
+            return typeof message === 'string' && CSRF_ERROR_CODES.has(message)
         })()
 
         if (csrfMismatch && !config.__csrfRetryAttempted) {
