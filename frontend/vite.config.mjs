@@ -21,7 +21,7 @@ export default defineConfig({
     proxy: {
       '/api': { target, changeOrigin: true },
       '/broadcasting': { target, changeOrigin: true },
-      // no /sanctum proxy needed in bearer flow
+      '/sanctum': { target, changeOrigin: true },
     },
     watch: {
       usePolling: true

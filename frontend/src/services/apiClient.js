@@ -2,6 +2,7 @@ import axios from 'axios'
 import { useAuthStore } from '../stores/auth'
 import { useRequestStore } from '../stores/request'
 import { notifyError } from '../utils/notifications'
+import {ensureCsrfCookie} from "./csrf.js";
 
 // Determine the API base URL, using VITE_API_URL if set, else default to '/api/v1'
 const apiBaseUrl = (() => {
@@ -19,19 +20,38 @@ const apiClient = axios.create({
     timeout: 15000,
     validateStatus: s => s >= 200 && s < 300,
     withCredentials: true,
+    xsrfCookieName: 'XSRF-TOKEN',
+    xsrfHeaderName: 'X-XSRF-TOKEN',
 })
+
+apiClient.defaults.headers.common['X-Requested-With'] = 'XMLHttpRequest'
 
 const MAX_ATTEMPTS = Number(import.meta.env.VITE_MAX_RETRY_ATTEMPTS || 3)
 const RETRYABLE_METHODS = ['get', 'head']
 let refreshPromise = null
+
+const SAFE_METHODS = ['get', 'head', 'options', 'trace']
 
 function delay(attempt){
     const base = 300 * 2 ** attempt
     return new Promise(r => setTimeout(r, base + Math.random()*100))
 }
 
-// Request: attach token + request id
-apiClient.interceptors.request.use((config) => {
+async function bootstrapCsrf(config) {
+    const method = (config.method || 'get').toLowerCase()
+    const shouldBootstrap = !SAFE_METHODS.includes(method) && config.withCredentials !== false
+
+    if (!shouldBootstrap || config.__skipCsrfBootstrap) {
+        return
+    }
+
+    await ensureCsrfCookie()
+}
+
+// Request: ensure CSRF, attach token + request id
+apiClient.interceptors.request.use(async (config) => {
+    await bootstrapCsrf(config)
+
     const auth = useAuthStore()
     const req = useRequestStore()
 
