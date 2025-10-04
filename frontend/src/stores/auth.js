@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import api from '../services/apiClient'
-import {ensureCsrfCookie} from "../services/csrf.js";
+import { ensureCsrfCookie } from '../services/csrf'
 
 export const useAuthStore = defineStore('auth', () => {
     const token = ref(null)
@@ -42,6 +42,7 @@ export const useAuthStore = defineStore('auth', () => {
         user.value = payload.user ?? null
         hasRefreshSession.value = Boolean(token.value)
         hasAttemptedRestore.value = true
+        await ensureCsrfCookie({ force: true, reason: 'login' })
         return user.value
     }
 
@@ -70,6 +71,12 @@ export const useAuthStore = defineStore('auth', () => {
     }
 
     async function logout() {
+        try {
+            await ensureCsrfCookie({ force: true, reason: 'logout' })
+        } catch (error) {
+            console.warn('Unable to refresh CSRF cookie before logout.', error)
+        }
+
         try {
             await api.post('/auth/logout')
         } catch {
