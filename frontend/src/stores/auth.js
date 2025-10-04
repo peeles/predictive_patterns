@@ -6,13 +6,14 @@ import {ensureCsrfCookie} from "../services/csrf.js";
 export const useAuthStore = defineStore('auth', () => {
     const token = ref(null)
     const user = ref(null)
-    const hasRefreshSession = ref(typeof window !== 'undefined')
+    const hasRefreshSession = ref(false)
     const hasAttemptedRestore = ref(false)
     let restorePromise = null
 
     function clearState() {
         token.value = null
         user.value = null
+        hasRefreshSession.value = false
     }
 
     function extractAuthPayload(rawResponse) {
@@ -39,7 +40,7 @@ export const useAuthStore = defineStore('auth', () => {
         const payload = extractAuthPayload(response)
         token.value = payload.accessToken ?? null
         user.value = payload.user ?? null
-        hasRefreshSession.value = true
+        hasRefreshSession.value = Boolean(token.value)
         hasAttemptedRestore.value = true
         return user.value
     }
@@ -57,7 +58,7 @@ export const useAuthStore = defineStore('auth', () => {
             const payload = extractAuthPayload(response)
             token.value = payload.accessToken ?? null
             user.value = payload.user ?? null
-            hasRefreshSession.value = true
+            hasRefreshSession.value = Boolean(token.value)
             hasAttemptedRestore.value = true
             return token.value
         } catch {
@@ -79,13 +80,16 @@ export const useAuthStore = defineStore('auth', () => {
         clearState()
     }
 
-    async function restoreSession() {
-        if (hasAttemptedRestore.value) {
+    async function restoreSession(options = {}) {
+        const { force = false } = options
+
+        if (!force && hasAttemptedRestore.value) {
             return token.value
         }
 
         if (!restorePromise) {
-            restorePromise = (hasRefreshSession.value ? refresh() : Promise.resolve(null)).finally(() => {
+            const shouldRefresh = force || hasRefreshSession.value
+            restorePromise = (shouldRefresh ? refresh({ force: shouldRefresh && force }) : Promise.resolve(null)).finally(() => {
                 hasAttemptedRestore.value = true
                 restorePromise = null
             })
@@ -95,6 +99,7 @@ export const useAuthStore = defineStore('auth', () => {
     }
 
     const isAuthenticated = computed(() => Boolean(token.value))
+    const isSessionHydrated = computed(() => hasAttemptedRestore.value || Boolean(token.value))
     const role = computed(() => user.value?.role ?? '')
     const isAdmin = computed(() => role.value === 'admin')
     const canRefresh = computed(() => hasRefreshSession.value)
@@ -112,5 +117,6 @@ export const useAuthStore = defineStore('auth', () => {
         restoreSession,
         canRefresh,
         hasAttemptedSessionRestore,
+        isSessionHydrated,
     }
 })

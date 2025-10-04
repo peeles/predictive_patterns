@@ -62,15 +62,21 @@ const router = createRouter({
     },
 })
 
-router.beforeEach(async (to) => {
+export async function authNavigationGuard(to) {
     const auth = useAuthStore()
 
     if (!auth.hasAttemptedSessionRestore) {
         await auth.restoreSession()
     }
 
-    if (to.meta.requiresAuth && !auth.isAuthenticated) {
-        return { name: 'login', query: { redirect: to.fullPath } }
+    if (to.meta.requiresAuth) {
+        if (!auth.isAuthenticated && auth.canRefresh) {
+            await auth.restoreSession({ force: true })
+        }
+
+        if (!auth.isAuthenticated) {
+            return { name: 'login', query: { redirect: to.fullPath } }
+        }
     }
 
     if (to.meta.requiresAdmin && !auth.isAdmin) {
@@ -84,6 +90,8 @@ router.beforeEach(async (to) => {
     }
 
     return true
-})
+}
+
+router.beforeEach(authNavigationGuard)
 
 export default router

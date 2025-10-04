@@ -3,6 +3,7 @@ import { useAuthStore } from '../stores/auth'
 import { useRequestStore } from '../stores/request'
 import { notifyError } from '../utils/notifications'
 import {ensureCsrfCookie} from "./csrf.js";
+import {getCookie} from "../utils/cookies.js";
 
 // Determine the API base URL, using VITE_API_URL if set, else default to '/api/v1'
 const apiBaseUrl = (() => {
@@ -31,6 +32,8 @@ const RETRYABLE_METHODS = ['get', 'head']
 let refreshPromise = null
 
 const SAFE_METHODS = ['get', 'head', 'options', 'trace']
+const CSRF_STATUS_CODES = new Set([419])
+const CSRF_ERROR_CODES = new Set(['CSRF token mismatch.', 'Page Expired', 'CSRF mismatch'])
 
 function delay(attempt){
     const base = 300 * 2 ** attempt
@@ -40,7 +43,6 @@ function delay(attempt){
 async function bootstrapCsrf(config) {
     const method = (config.method || 'get').toLowerCase()
     const shouldBootstrap = !SAFE_METHODS.includes(method) && config.withCredentials !== false
-
     if (!shouldBootstrap || config.__skipCsrfBootstrap) {
         return
     }
@@ -48,14 +50,42 @@ async function bootstrapCsrf(config) {
     await ensureCsrfCookie()
 }
 
+function applyXsrfHeader(config) {
+    if (config.withCredentials === false) {
+        return
+    }
+
+    const headerName = apiClient.defaults.xsrfHeaderName || 'X-XSRF-TOKEN'
+    if (config.headers?.[headerName]) {
+        return
+    }
+
+    const cookieName = apiClient.defaults.xsrfCookieName || 'XSRF-TOKEN'
+    const rawToken = getCookie(cookieName)
+    if (!rawToken) {
+        return
+    }
+
+    let decodedToken
+    try {
+        decodedToken = decodeURIComponent(rawToken)
+    } catch {
+        decodedToken = rawToken
+    }
+
+    config.headers = config.headers || {}
+    config.headers[headerName] = decodedToken
+}
+
 // Request: ensure CSRF, attach token + request id
 apiClient.interceptors.request.use(async (config) => {
-    await bootstrapCsrf(config)
+    await bootstrapCsrf(config);
 
     const auth = useAuthStore()
     const req = useRequestStore()
 
     config.headers = config.headers || {}
+    applyXsrfHeader(config)
     const accessToken = auth?.token?.value ?? auth?.token
     if (accessToken) {
         config.headers.Authorization = `Bearer ${accessToken}`
@@ -81,6 +111,32 @@ apiClient.interceptors.response.use(
         if (!config) return Promise.reject(error)
 
         const auth = useAuthStore()
+
+        const csrfMismatch = (() => {
+            if (!response) {
+                return false
+            }
+
+            if (CSRF_STATUS_CODES.has(response.status)) {
+                return true
+            }
+
+            const message = response?.data?.messagex
+            return typeof message === 'string' && CSRF_ERROR_CODES.has(message);
+
+
+        })()
+
+        if (csrfMismatch && !config.__csrfRetryAttempted) {
+            try {
+                await ensureCsrfCookie({ force: true, reason: 'mismatch' })
+            } catch (csrfError) {
+                console.warn('Unable to refresh CSRF cookie', csrfError)
+            }
+
+            config.__csrfRetryAttempted = true
+            return apiClient(config)
+        }
 
         // 401 → refresh once
         if (response?.status === 401 && !config.__isRetryRequest) {
