@@ -7,7 +7,7 @@ use App\Http\Requests\ExportRequest;
 use App\Services\H3AggregationService;
 use App\Services\H3GeometryService;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Response;
+use Illuminate\Support\Facades\Response;
 use JsonException;
 
 class ExportController extends Controller
