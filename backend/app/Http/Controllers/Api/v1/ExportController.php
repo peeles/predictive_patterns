@@ -8,6 +8,7 @@ use App\Services\H3AggregationService;
 use App\Services\H3GeometryService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Response;
+use Illuminate\Support\Facades\Response as ResponseFacade;
 use JsonException;
 
 class ExportController extends Controller
@@ -72,7 +73,7 @@ class ExportController extends Controller
         $csv = stream_get_contents($handle) ?: '';
         fclose($handle);
 
-        return Response::make($csv, 200, [
+        return ResponseFacade::make($csv, 200, [
             'Content-Type' => 'text/csv',
             'Content-Disposition' => 'attachment; filename="crime-export.csv"',
         ]);
@@ -108,7 +109,7 @@ class ExportController extends Controller
             ];
         }
 
-        return Response::json([
+        return ResponseFacade::json([
             'type' => 'FeatureCollection',
             'features' => $features,
         ], 200, [

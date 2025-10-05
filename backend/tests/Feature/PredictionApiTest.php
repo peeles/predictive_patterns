@@ -141,6 +141,49 @@ class PredictionApiTest extends TestCase
         }
     }
 
+    public function test_predictions_index_filters_by_multiple_statuses(): void
+    {
+        $model = PredictiveModel::factory()->create();
+        $otherModel = PredictiveModel::factory()->create();
+
+        $matchingPredictions = [
+            Prediction::factory()->for($model, 'model')->completed()->create(),
+            Prediction::factory()->for($model, 'model')->failed()->create(),
+        ];
+
+        Prediction::factory()->for($model, 'model')->running()->create();
+        Prediction::factory()->for($otherModel, 'model')->completed()->create();
+
+        $tokens = $this->issueTokensForRole(Role::Analyst);
+
+        $query = http_build_query([
+            'filter' => [
+                'status' => ['completed', 'failed'],
+                'model_id' => $model->id,
+            ],
+        ]);
+
+        $response = $this->withHeader('Authorization', 'Bearer '.$tokens['accessToken'])
+            ->getJson('/api/v1/predictions?'.$query);
+
+        $response->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonCount(2, 'data');
+
+        $statuses = collect($response->json('data'))
+            ->pluck('status')
+            ->sort()
+            ->values()
+            ->all();
+
+        $expectedStatuses = collect($matchingPredictions)
+            ->map(fn (Prediction $prediction): string => $prediction->status->value)
+            ->sort()
+            ->values()
+            ->all();
+
+        $this->assertSame($expectedStatuses, $statuses);
+    }
     public function test_prediction_show_includes_shap_values(): void
     {
         $tokens = $this->issueTokensForRole(Role::Analyst);

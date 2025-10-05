@@ -9,7 +9,7 @@
                     v-for="toast in notifications"
                     :key="toast.id"
                     :class="toastClasses(toast.type)"
-                    class="pointer-events-auto w-full max-w-sm rounded-lg border border-stone-200 bg-white p-4 shadow-lg focus-within:outline focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-blue-500"
+                    class="pointer-events-auto w-full max-w-sm rounded-lg border border-stone-200 bg-white p-4 shadow-lg focus-within:outline focus-within:outline-offset-2 focus-within:outline-blue-500"
                     role="main"
                 >
                     <header class="flex items-start justify-between gap-3">
@@ -75,6 +75,6 @@ const dismiss = (id) => {
 .toast-enter-from,
 .toast-leave-to {
     opacity: 0;
-    transform: transtoneY(0.5rem) scale(0.95);
+    transform: translateY(0.5rem) scale(0.95);
 }
 </style>
