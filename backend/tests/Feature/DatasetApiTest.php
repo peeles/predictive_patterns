@@ -6,12 +6,14 @@ use App\Enums\CrimeIngestionStatus;
 use App\Enums\DatasetStatus;
 use App\Enums\Role;
 use App\Models\CrimeIngestionRun;
+use App\Jobs\CompleteDatasetIngestion;
 use App\Jobs\IngestRemoteDataset;
 use App\Models\Dataset;
 use App\Services\H3AggregationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
@@ -19,6 +21,41 @@ use Tests\TestCase;
 class DatasetApiTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_dataset_ingest_dispatches_finalisation_job(): void
+    {
+        Storage::fake('local');
+        Cache::flush();
+        Bus::fake();
+
+        $csv = "Type,Date\nEntry,2024-04-01T00:00:00+00:00\n";
+        $file = UploadedFile::fake()->createWithContent('dataset.csv', $csv, 'text/csv');
+        $tokens = $this->issueTokensForRole(Role::Admin);
+
+        $response = $this->withHeader('Authorization', 'Bearer '.$tokens['accessToken'])
+            ->postJson('/api/v1/datasets/ingest', [
+                'name' => 'Queued Dataset',
+                'description' => 'Queued for processing',
+                'source_type' => 'file',
+                'file' => $file,
+            ]);
+
+        $response->assertCreated();
+        $response->assertJson(['success' => true]);
+
+        $data = $response->json('data');
+        $this->assertSame(DatasetStatus::Processing->value, $data['status']);
+        $this->assertSame(0, $data['features_count']);
+
+        Bus::assertDispatched(CompleteDatasetIngestion::class, static function (CompleteDatasetIngestion $job) use ($data): bool {
+            return $job->datasetId === $data['id'];
+        });
+
+        $this->assertDatabaseHas('datasets', [
+            'id' => $data['id'],
+            'status' => DatasetStatus::Processing->value,
+        ]);
+    }
 
     public function test_dataset_ingest_accepts_file_upload(): void
     {
