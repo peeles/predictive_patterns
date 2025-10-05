@@ -35,7 +35,7 @@
 </template>
 
 <script setup>
-import { dismissNotification, useNotifications } from '../../utils/notifications'
+import { dismissNotification, useNotifications } from '../../utils/notifications.js'
 
 const { notifications } = useNotifications()
 

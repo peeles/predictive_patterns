@@ -1,7 +1,12 @@
 <template>
     <section class="space-y-4" aria-labelledby="preview-heading">
         <header>
-            <h3 id="preview-heading" class="text-base font-semibold text-stone-900">Preview</h3>
+            <h3
+                id="preview-heading"
+                class="text-sm font-semibold uppercase tracking-wide text-stone-600"
+            >
+                Preview
+            </h3>
             <p class="mt-1 text-sm text-stone-600">
                 Confirm the parsed rows and schema alignment before submitting the dataset for ingestion.
             </p>

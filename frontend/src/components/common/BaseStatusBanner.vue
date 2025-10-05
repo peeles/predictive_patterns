@@ -38,7 +38,7 @@
 
 <script setup>
 import { computed, onMounted, onUnmounted, ref } from 'vue'
-import { disconnectBroadcastClient, getBroadcastClient, onConnectionStateChange } from '../../services/broadcast'
+import { disconnectBroadcastClient, getBroadcastClient, onConnectionStateChange } from '../../services/broadcast.js'
 
 const connectionState = ref({ state: 'disconnected', reason: null, driver: 'reverb' })
 const attempted = ref(false)

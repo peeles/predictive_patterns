@@ -1,6 +1,7 @@
 <template>
     <BaseModal
         :open="open"
+        :dialog-class="'max-w-lg'"
         @close="handleClose"
     >
         <template #header>

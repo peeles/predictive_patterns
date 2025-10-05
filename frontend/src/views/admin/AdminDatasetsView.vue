@@ -1,21 +1,21 @@
 <template>
     <div class="space-y-6">
-        <header class="flex flex-wrap items-center justify-between">
-            <div class="space-y-2">
-                <p class="text-xs font-semibold uppercase tracking-wider text-stone-500">Governance Workspace</p>
-                <h1 class="text-2xl font-semibold text-stone-900">Observation Datasets</h1>
-                <p class="mt-1 max-w-2xl text-sm text-stone-600">
-                    Upload new observational datasets and monitor the automated data ingestion pipeline.
-                </p>
-            </div>
-            <button
-                class="inline-flex items-center justify-center rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 focus-visible:outline  focus-visible:outline-offset-2 focus-visible:outline-blue-500"
-                type="button"
-                @click="openWizard"
-            >
-                Launch ingest wizard
-            </button>
-        </header>
+        <PageHeader
+            :page-tag="'Governance Workspace'"
+            :page-title="'Observation Datasets'"
+            :page-subtitle="'Upload new observational datasets and monitor the automated data ingestion pipeline.'"
+        >
+            <template #actions>
+                <button
+                    class="inline-flex items-center justify-center rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold
+                text-white shadow-sm transition hover:bg-blue-700 cursor-pointer disabled:cursor-not-allowed disabled:bg-stone-400"
+                    type="button"
+                    @click="openWizard"
+                >
+                    Launch ingest wizard
+                </button>
+            </template>
+        </PageHeader>
 
         <section aria-labelledby="uploaded-datasets-heading" class="rounded-xl border border-stone-200 bg-white shadow-sm">
             <header class="flex flex-wrap items-center justify-between gap-4 border-b border-stone-200 px-6 py-4">
@@ -268,7 +268,11 @@
             </PaginationControls>
         </section>
 
-        <DatasetIngest v-model="wizardOpen" @submitted="handleDatasetSubmitted" />
+        <DatasetIngestModal
+            @submitted="handleDatasetSubmitted"
+            :open="wizardOpen"
+            @close="wizardOpen = false"
+        />
 
         <div
             v-if="selectedRun"
@@ -351,11 +355,12 @@
 
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import PaginationControls from '../../components/pagination/PaginationControls.vue'
-import DatasetIngest from '../../components/datasets/DatasetIngest.vue'
+import PaginationControls from '../../components/common/pagination/PaginationControls.vue'
+import DatasetIngestModal from '../../components/datasets/DatasetIngestModal.vue'
 import apiClient from '../../services/apiClient'
 import { notifyError } from '../../utils/notifications'
 import { getBroadcastClient } from '../../services/broadcast'
+import PageHeader from "../../components/common/PageHeader.vue";
 
 const wizardOpen = ref(false)
 const datasets = ref([])

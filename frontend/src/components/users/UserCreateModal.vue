@@ -1,5 +1,9 @@
 <template>
-    <BaseModal :open="open" dialog-class="max-w-xl" @close="handleClose">
+    <BaseModal
+        :open="open"
+        :dialog-class="'max-w-lg'"
+        @close="handleClose"
+    >
         <template #header>
             <h2 class="text-lg font-semibold text-stone-900">Invite a new user</h2>
             <p class="mt-1 text-sm text-stone-600">
@@ -7,7 +11,11 @@
             </p>
         </template>
 
-        <form id="create-user-form" class="space-y-5" @submit.prevent="handleSubmit">
+        <form
+            id="create-user-form"
+            class="space-y-5"
+            @submit.prevent="handleSubmit"
+        >
             <div v-if="errors.general" class="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
                 {{ errors.general }}
             </div>

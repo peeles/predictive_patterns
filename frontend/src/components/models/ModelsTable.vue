@@ -165,7 +165,7 @@
 <script setup>
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
-import PaginationControls from '../pagination/PaginationControls.vue'
+import PaginationControls from '../common/pagination/PaginationControls.vue'
 import EvaluateModelModal from './EvaluateModelModal.vue'
 import { useAuthStore } from '../../stores/auth'
 import { useModelStore } from '../../stores/model'

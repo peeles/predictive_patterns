@@ -8,7 +8,8 @@
             role="dialog"
             aria-modal="true"
         >
-            <div
+            <BaseFocusTrap>
+                <div
                 :class="[
                     'w-full overflow-hidden rounded-2xl bg-white shadow-xl',
                     dialogClass,
@@ -56,12 +57,14 @@
                     <slot name="footer" />
                 </footer>
             </div>
+            </BaseFocusTrap>
         </div>
     </Teleport>
 </template>
 
 <script setup>
 import { computed, useSlots } from 'vue'
+import BaseFocusTrap from "./BaseFocusTrap.vue";
 
 const props = defineProps({
     open: {

@@ -1,5 +1,8 @@
 <template>
-    <div ref="trapRoot" @keydown.tab="onKeydown">
+    <div
+        ref="trapRoot"
+        @keydown.tab="onKeydown"
+    >
         <slot />
     </div>
 </template>
