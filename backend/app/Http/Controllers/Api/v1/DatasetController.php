@@ -192,7 +192,13 @@ class DatasetController extends BaseController
             );
         }
 
-        $dataset = $this->processingService->finalise($dataset, $schemaMapping);
+        $dataset = $this->processingService->queueFinalise($dataset, $schemaMapping);
+
+        $dataset->refresh();
+
+        if (DatasetResource::featuresTableExists()) {
+            $dataset->loadCount('features');
+        }
 
         return $this->successResponse(
             new DatasetResource($dataset),
