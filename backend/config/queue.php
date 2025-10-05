@@ -76,12 +76,15 @@ return [
                 }
             }
 
-            $connection = env('TRAINING_QUEUE_CONNECTION') ?: null;
+            $connection = env('TRAINING_QUEUE_CONNECTION');
+            if ($connection === '') {
+                $connection = null;
+            }
 
             if ($driver === 'redis') {
                 $connection ??= env('REDIS_QUEUE_CONNECTION', 'default');
             } elseif ($driver === 'database') {
-                $connection ??= env('DB_QUEUE_CONNECTION');
+                $connection = env('DB_QUEUE_CONNECTION') ?? env('DB_CONNECTION');
             }
 
             return [
