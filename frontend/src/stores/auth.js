@@ -50,9 +50,17 @@ export const useAuthStore = defineStore('auth', () => {
             hasAttemptedRestore.value = true;
             await ensureCsrfCookie({ force: true, reason: 'login' });
 
-            return user.value;
+            return { success: true, user: user.value };
         } catch (error) {
-            setHasRefreshSession(false)
+            setHasRefreshSession(false);
+            hasAttemptedRestore.value = true;
+
+            const message =
+                error?.response?.data?.message ??
+                error?.message ??
+                'Unable to sign in. Please try again.';
+
+            return { success: false, error, message };
         }
     }
 
