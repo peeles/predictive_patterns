@@ -143,6 +143,10 @@ class GenerateHeatmapJob implements ShouldQueue
 
         if ($artifactPath === null) {
             $artifactPath = $this->findMostRecentArtifactOnDisk($model);
+
+            if ($artifactPath !== null) {
+                $this->storeArtifactPathOnModel($model, $artifactPath);
+            }
         }
 
         if ($artifactPath === null) {
@@ -264,6 +268,36 @@ class GenerateHeatmapJob implements ShouldQueue
         rsort($files);
 
         return $files[0] ?? null;
+    }
+
+    /**
+     * Persist the resolved artifact path back onto the model metadata for future requests.
+     * @param PredictiveModel $model
+     * @param string $artifactPath
+     */
+    private function storeArtifactPathOnModel(PredictiveModel $model, string $artifactPath): void
+    {
+        try {
+            $metadata = $model->metadata;
+
+            if (! is_array($metadata)) {
+                $metadata = [];
+            }
+
+            if (($metadata['artifact_path'] ?? null) === $artifactPath) {
+                return;
+            }
+
+            $metadata['artifact_path'] = $artifactPath;
+
+            $model->forceFill(['metadata' => $metadata])->save();
+        } catch (Throwable $exception) {
+            Log::warning('Failed to persist artifact path onto model metadata', [
+                'model_id' => $model->getKey(),
+                'artifact_path' => $artifactPath,
+                'exception' => $exception->getMessage(),
+            ]);
+        }
     }
 
     /**
