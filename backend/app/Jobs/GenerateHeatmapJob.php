@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Enums\PredictionOutputFormat;
 use App\Enums\PredictionStatus;
+use App\Models\Dataset;
 use App\Models\Prediction;
 use App\Models\PredictiveModel;
 use App\Support\Phpml\ImputerFactory;
@@ -59,8 +60,12 @@ class GenerateHeatmapJob implements ShouldQueue
             $artifact = $this->loadLatestArtifact($prediction);
             $classifier = $this->restoreClassifier($artifact);
             $preprocessing = $this->buildPreprocessingContext($artifact);
-            $rows = $this->loadDatasetRows($prediction);
-            $entries = $this->prepareEntries($rows, $artifact['categories']);
+            $datasetContext = $this->loadDatasetRows($prediction);
+            $entries = $this->prepareEntries(
+                $datasetContext['rows'],
+                $artifact['categories'],
+                $datasetContext['column_map']
+            );
             $filtered = $this->filterEntries($entries, $this->parameters);
 
             if ($filtered === []) {
@@ -297,7 +302,10 @@ class GenerateHeatmapJob implements ShouldQueue
     }
 
     /**
-     * @return array<int, array<string, string|null>>
+     * @return array{
+     *     rows: array<int, array<string, string|null>>,
+     *     column_map: array<string, string>
+     * }
      */
     private function loadDatasetRows(Prediction $prediction): array
     {
@@ -324,13 +332,26 @@ class GenerateHeatmapJob implements ShouldQueue
             throw new RuntimeException(sprintf('Unable to open dataset file "%s".', $path));
         }
 
+        $columnMap = $this->resolveColumnMap($dataset);
+
         try {
             $rows = [];
             $header = null;
 
             while (($data = fgetcsv($handle)) !== false) {
                 if ($header === null) {
-                    $header = array_map(static fn ($value) => is_string($value) ? trim($value) : $value, $data);
+                    $header = [];
+
+                    foreach ($data as $index => $value) {
+                        $value = is_string($value) ? $value : (string) $value;
+                        $normalized = $this->normalizeColumnName($value);
+
+                        if ($normalized === '') {
+                            $normalized = $this->normalizeColumnName('column_' . $index);
+                        }
+
+                        $header[$index] = $normalized !== '' ? $normalized : 'column_' . $index;
+                    }
 
                     continue;
                 }
@@ -348,7 +369,10 @@ class GenerateHeatmapJob implements ShouldQueue
                 $rows[] = $row;
             }
 
-            return $rows;
+            return [
+                'rows' => $rows,
+                'column_map' => $columnMap,
+            ];
         } finally {
             fclose($handle);
         }
@@ -359,13 +383,19 @@ class GenerateHeatmapJob implements ShouldQueue
      *
      * @return list<array{timestamp: CarbonImmutable, latitude: float, longitude: float, category: string, features: list<float>}>
      */
-    private function prepareEntries(array $rows, array $artifactCategories): array
+    private function prepareEntries(array $rows, array $artifactCategories, array $columnMap): array
     {
         $entries = [];
         $categories = array_values(array_map(static fn ($value) => (string) $value, $artifactCategories));
 
+        $timestampColumn = $columnMap['timestamp'] ?? 'timestamp';
+        $latitudeColumn = $columnMap['latitude'] ?? 'latitude';
+        $longitudeColumn = $columnMap['longitude'] ?? 'longitude';
+        $categoryColumn = $columnMap['category'] ?? 'category';
+        $riskColumn = $columnMap['risk_score'] ?? 'risk_score';
+
         foreach ($rows as $row) {
-            $timestampString = (string) ($row['timestamp'] ?? '');
+            $timestampString = (string) ($row[$timestampColumn] ?? '');
 
             if ($timestampString === '') {
                 continue;
@@ -377,10 +407,12 @@ class GenerateHeatmapJob implements ShouldQueue
                 continue;
             }
 
-            $latitude = (float) ($row['latitude'] ?? $row['lat'] ?? 0.0);
-            $longitude = (float) ($row['longitude'] ?? $row['lng'] ?? 0.0);
-            $riskScore = (float) ($row['risk_score'] ?? $row['risk'] ?? 0.0);
-            $category = (string) ($row['category'] ?? '');
+            $latitude = (float) ($row[$latitudeColumn] ?? $row['lat'] ?? $row['latitude'] ?? 0.0);
+            $longitude = (float) ($row[$longitudeColumn] ?? $row['lng'] ?? $row['longitude'] ?? 0.0);
+            $riskScoreValue = $row[$riskColumn] ?? $row['risk_score'] ?? $row['risk'] ?? null;
+            $riskScore = is_numeric($riskScoreValue) ? (float) $riskScoreValue : 0.0;
+            $categoryValue = $row[$categoryColumn] ?? $row['category'] ?? '';
+            $category = is_string($categoryValue) ? trim($categoryValue) : (string) $categoryValue;
 
             $hour = $timestamp->hour / 23.0;
             $dayOfWeek = ($timestamp->dayOfWeekIso - 1) / 6.0;
@@ -401,6 +433,63 @@ class GenerateHeatmapJob implements ShouldQueue
         }
 
         return $entries;
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function resolveColumnMap(Dataset $dataset): array
+    {
+        $mapping = is_array($dataset->schema_mapping) ? $dataset->schema_mapping : [];
+
+        return [
+            'timestamp' => $this->resolveMappedColumn($mapping, 'timestamp', 'timestamp'),
+            'latitude' => $this->resolveMappedColumn($mapping, 'latitude', 'latitude'),
+            'longitude' => $this->resolveMappedColumn($mapping, 'longitude', 'longitude'),
+            'category' => $this->resolveMappedColumn($mapping, 'category', 'category'),
+            'risk_score' => $this->resolveMappedColumn($mapping, 'risk', 'risk_score'),
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $mapping
+     */
+    private function resolveMappedColumn(array $mapping, string $key, string $default): string
+    {
+        $value = $mapping[$key] ?? $default;
+
+        if (! is_string($value) || trim($value) === '') {
+            $value = $default;
+        }
+
+        $normalized = $this->normalizeColumnName($value);
+
+        if ($normalized === '') {
+            $normalized = $this->normalizeColumnName($default);
+        }
+
+        if ($normalized === '') {
+            $normalized = $default;
+        }
+
+        return $normalized;
+    }
+
+    private function normalizeColumnName(string $column): string
+    {
+        $column = preg_replace('/^\xEF\xBB\xBF/u', '', $column) ?? $column;
+        $column = trim($column);
+
+        if ($column === '') {
+            return '';
+        }
+
+        $column = mb_strtolower($column, 'UTF-8');
+        $column = str_replace(['-', '/'], ' ', $column);
+        $column = preg_replace('/[^a-z0-9]+/u', '_', $column) ?? $column;
+        $column = preg_replace('/_+/', '_', $column) ?? $column;
+
+        return trim($column, '_');
     }
 
     /**
