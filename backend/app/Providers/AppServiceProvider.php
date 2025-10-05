@@ -6,10 +6,11 @@ use App\Enums\Role;
 use App\Support\ResolvesRoles;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\App;
 use Illuminate\Support\Facades\File;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
+use Illuminate\Support\Str;
 use Random\RandomException;
 
 class AppServiceProvider extends ServiceProvider
@@ -31,41 +32,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        RateLimiter::for('api', function (Request $request): Limit {
-            $role = $this->resolveRole($request->user());
-            $limitKey = sprintf('api.rate_limits.%s', $role->value);
-            $perMinute = (int)config($limitKey, config('api.rate_limits.' . Role::Viewer->value, 60));
-            $identifier = $request->user()?->getAuthIdentifier() ?? $request->ip() ?? 'unknown';
-
-            return Limit::perMinute(max($perMinute, 1))->by((string)$identifier);
-        });
-
-        RateLimiter::for('map', function (Request $request): Limit {
-            $role = $this->resolveRole($request->user());
-            $limitKey = sprintf('api.map_rate_limits.%s', $role->value);
-            $perMinute = (int)config($limitKey, config('api.map_rate_limits.' . Role::Viewer->value, 600));
-            $identifier = $request->user()?->getAuthIdentifier() ?? $request->ip() ?? 'unknown';
-
-            return Limit::perMinute(max($perMinute, 1))->by((string)$identifier);
-        });
-
-        RateLimiter::for('auth-login', function (Request $request): Limit {
-            $perMinute = (int)config('api.auth_rate_limits.login', 10);
-            $identifier = $request->ip() ?? 'unknown';
-
-            if ($email = $request->input('email')) {
-                $identifier = sprintf('%s|%s', strtolower((string)$email), $identifier);
-            }
-
-            return Limit::perMinute(max($perMinute, 1))->by($identifier);
-        });
-
-        RateLimiter::for('auth-refresh', function (Request $request): Limit {
-            $perMinute = (int)config('api.auth_rate_limits.refresh', 60);
-            $identifier = $request->input('refreshToken') ?? $request->user()?->getAuthIdentifier() ?? $request->ip() ?? 'unknown';
-
-            return Limit::perMinute(max($perMinute, 1))->by((string)$identifier);
-        });
+        $this->useEphemeralCacheDuringDatabaseCommands();
+        $this->configureRateLimiting();
     }
 
     /**
@@ -146,5 +114,73 @@ class AppServiceProvider extends ServiceProvider
             'AES-256-CBC', 'AES-256-GCM' => 32,
             default => 32,
         };
+    }
+
+    private function useEphemeralCacheDuringDatabaseCommands(): void
+    {
+        if (!App::runningInConsole()) {
+            return;
+        }
+
+        $command = (string) ($_SERVER['argv'][1] ?? '');
+
+        if ($command === '') {
+            return;
+        }
+
+        $databaseCommands = [
+            'db:wipe',
+            'migrate',
+            'migrate:fresh',
+            'migrate:install',
+            'migrate:refresh',
+            'migrate:reset',
+            'migrate:status',
+        ];
+
+        if (!Str::startsWith($command, $databaseCommands)) {
+            return;
+        }
+
+        config(['cache.default' => 'array']);
+    }
+
+    private function configureRateLimiting(): void
+    {
+        RateLimiter::for('api', function (Request $request): Limit {
+            $role = $this->resolveRole($request->user());
+            $limitKey = sprintf('api.rate_limits.%s', $role->value);
+            $perMinute = (int)config($limitKey, config('api.rate_limits.' . Role::Viewer->value, 60));
+            $identifier = $request->user()?->getAuthIdentifier() ?? $request->ip() ?? 'unknown';
+
+            return Limit::perMinute(max($perMinute, 1))->by((string)$identifier);
+        });
+
+        RateLimiter::for('map', function (Request $request): Limit {
+            $role = $this->resolveRole($request->user());
+            $limitKey = sprintf('api.map_rate_limits.%s', $role->value);
+            $perMinute = (int)config($limitKey, config('api.map_rate_limits.' . Role::Viewer->value, 600));
+            $identifier = $request->user()?->getAuthIdentifier() ?? $request->ip() ?? 'unknown';
+
+            return Limit::perMinute(max($perMinute, 1))->by((string)$identifier);
+        });
+
+        RateLimiter::for('auth-login', function (Request $request): Limit {
+            $perMinute = (int)config('api.auth_rate_limits.login', 10);
+            $identifier = $request->ip() ?? 'unknown';
+
+            if ($email = $request->input('email')) {
+                $identifier = sprintf('%s|%s', strtolower((string)$email), $identifier);
+            }
+
+            return Limit::perMinute(max($perMinute, 1))->by($identifier);
+        });
+
+        RateLimiter::for('auth-refresh', function (Request $request): Limit {
+            $perMinute = (int)config('api.auth_rate_limits.refresh', 60);
+            $identifier = $request->input('refreshToken') ?? $request->user()?->getAuthIdentifier() ?? $request->ip() ?? 'unknown';
+
+            return Limit::perMinute(max($perMinute, 1))->by((string)$identifier);
+        });
     }
 }
