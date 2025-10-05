@@ -141,18 +141,18 @@ class GenerateHeatmapJob implements ShouldQueue
         $metadata = $model->metadata ?? [];
         $artifactPath = $this->resolveArtifactPathFromMetadata($metadata);
 
-        if ($artifactPath === null) {
-            $artifactPath = $this->findMostRecentArtifactOnDisk($model);
-        }
-
-        if ($artifactPath === null) {
-            throw new RuntimeException('Trained artifact for model is unavailable.');
-        }
-
         $disk = Storage::disk('local');
 
-        if (! $disk->exists($artifactPath)) {
-            throw new RuntimeException(sprintf('Model artifact "%s" could not be found.', $artifactPath));
+        if ($artifactPath === null || ! $disk->exists($artifactPath)) {
+            $artifactPath = $this->findMostRecentArtifactOnDisk($model);
+
+            if ($artifactPath !== null && $disk->exists($artifactPath)) {
+                $this->storeArtifactPathOnModel($model, $artifactPath);
+            }
+        }
+
+        if ($artifactPath === null || ! $disk->exists($artifactPath)) {
+            throw new RuntimeException('Trained artifact for model is unavailable.');
         }
 
         try {
@@ -264,6 +264,36 @@ class GenerateHeatmapJob implements ShouldQueue
         rsort($files);
 
         return $files[0] ?? null;
+    }
+
+    /**
+     * Persist the resolved artifact path back onto the model metadata for future requests.
+     * @param PredictiveModel $model
+     * @param string $artifactPath
+     */
+    private function storeArtifactPathOnModel(PredictiveModel $model, string $artifactPath): void
+    {
+        try {
+            $metadata = $model->metadata;
+
+            if (! is_array($metadata)) {
+                $metadata = [];
+            }
+
+            if (($metadata['artifact_path'] ?? null) === $artifactPath) {
+                return;
+            }
+
+            $metadata['artifact_path'] = $artifactPath;
+
+            $model->forceFill(['metadata' => $metadata])->save();
+        } catch (Throwable $exception) {
+            Log::warning('Failed to persist artifact path onto model metadata', [
+                'model_id' => $model->getKey(),
+                'artifact_path' => $artifactPath,
+                'exception' => $exception->getMessage(),
+            ]);
+        }
     }
 
     /**
