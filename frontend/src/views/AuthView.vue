@@ -35,9 +35,16 @@
                     class="rounded-xl border border-stone-300/80 px-4 py-3 text-sm shadow-sm shadow-stone-200/60 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
                     name="password"
                     required
-                    type="password"
+                type="password"
                 />
             </label>
+            <p
+                v-if="loginError"
+                class="rounded-xl border border-red-300/80 bg-red-50 px-4 py-3 text-sm text-red-700"
+                role="alert"
+            >
+                {{ loginError }}
+            </p>
             <button
                 :disabled="submitting"
                 class="w-full rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white shadow-sm shadow-blue-500/40 transition hover:bg-blue-700 focus-visible:outline  focus-visible:outline-offset-2 focus-visible:outline-blue-500 disabled:cursor-not-allowed disabled:bg-stone-400"
@@ -59,12 +66,22 @@ const router = useRouter()
 const email = ref('')
 const password = ref('')
 const submitting = ref(false)
+const loginError = ref('')
 
 async function submit() {
     submitting.value = true
+    loginError.value = ''
     try {
-        await authStore.login({ email: email.value, password: password.value })
+        const result = await authStore.login({ email: email.value, password: password.value })
+
+        if (result?.success === false) {
+            loginError.value = result.message ?? 'Unable to sign in. Please try again.'
+            return
+        }
+
         await router.push({ name: 'dashboard' });
+    } catch (error) {
+        loginError.value = error?.message ?? 'Unable to sign in. Please try again.'
     } finally {
         submitting.value = false
     }
