@@ -17,6 +17,8 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Carbon;
+use Symfony\Component\HttpFoundation\Response;
+use Throwable;
 
 class PredictionController extends BaseController
 {
@@ -108,7 +110,7 @@ class PredictionController extends BaseController
 
         return $this->successResponse(
             new PredictionDetailResource($prediction),
-            JsonResponse::HTTP_ACCEPTED
+            Response::HTTP_ACCEPTED
         );
     }
 
@@ -218,7 +220,7 @@ class PredictionController extends BaseController
 
         try {
             return Carbon::parse($value);
-        } catch (\Throwable) {
+        } catch (Throwable) {
             return null;
         }
     }
