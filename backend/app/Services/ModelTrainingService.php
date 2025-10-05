@@ -30,6 +30,7 @@ use Phpml\Exception\SerializeException;
 use Phpml\ModelManager;
 use Phpml\Preprocessing\Imputer;
 use Phpml\Preprocessing\Normalizer;
+use Phpml\SupportVectorMachine\Kernel;
 use ReflectionClass;
 use ReflectionException;
 use RuntimeException;
@@ -574,12 +575,13 @@ class ModelTrainingService
     private function generateHyperparameterGrid(array $hyperparameters): array
     {
         $modelType = $hyperparameters['model_type'];
+        $userGrid = $hyperparameters['search_grid'];
+
+        if ($modelType === 'svc') {
+            return $this->generateSvcHyperparameterGrid($hyperparameters, $userGrid);
+        }
+
         $defaultGrid = match ($modelType) {
-            'svc' => [
-                'learning_rate' => [0.01, $hyperparameters['learning_rate']],
-                'iterations' => [300, $hyperparameters['iterations']],
-                'lambda' => [0.0001, max(0.0001, (float) $hyperparameters['lambda'])],
-            ],
             'knn' => [
                 'k' => [3, 5, max(1, (int) $hyperparameters['k'])],
             ],
@@ -599,8 +601,6 @@ class ModelTrainingService
                 'l2_penalty' => [0.0, $hyperparameters['l2_penalty']],
             ],
         };
-
-        $userGrid = $hyperparameters['search_grid'];
 
         foreach ($userGrid as $key => $values) {
             if (! is_array($values) || $values === []) {
@@ -648,6 +648,375 @@ class ModelTrainingService
     }
 
     /**
+     * Generate hyperparameter combinations for the SVC classifier.
+     *
+     * @param array<string, mixed> $hyperparameters
+     * @param array<string, list<mixed>> $userGrid
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function generateSvcHyperparameterGrid(array $hyperparameters, array $userGrid): array
+    {
+        $costValues = $this->mergeGridNumericValues(
+            'cost',
+            [0.5, 1.0, (float) $hyperparameters['cost']],
+            $userGrid,
+            0.0001,
+            1000.0
+        );
+
+        $toleranceValues = $this->mergeGridNumericValues(
+            'tolerance',
+            [0.0001, (float) $hyperparameters['tolerance'], 0.01],
+            $userGrid,
+            1.0e-6,
+            0.1
+        );
+
+        $cacheSizes = $this->mergeGridNumericValues(
+            'cache_size',
+            [50.0, (float) $hyperparameters['cache_size']],
+            $userGrid,
+            1.0,
+            4096.0
+        );
+
+        $shrinkingValues = $this->mergeGridBooleanValues(
+            'shrinking',
+            [$hyperparameters['shrinking']],
+            $userGrid
+        );
+
+        $probabilityValues = $this->mergeGridBooleanValues(
+            'probability_estimates',
+            [$hyperparameters['probability_estimates']],
+            $userGrid
+        );
+
+        $kernelCombos = $this->mergeSvcKernelGrid($hyperparameters, $userGrid);
+
+        $combinations = [];
+
+        foreach ($costValues as $cost) {
+            foreach ($toleranceValues as $tolerance) {
+                foreach ($cacheSizes as $cacheSize) {
+                    foreach ($shrinkingValues as $shrinking) {
+                        foreach ($probabilityValues as $probability) {
+                            foreach ($kernelCombos as $kernelCombo) {
+                                $combinations[] = array_merge(
+                                    [
+                                        'cost' => $cost,
+                                        'tolerance' => $tolerance,
+                                        'cache_size' => $cacheSize,
+                                        'shrinking' => $shrinking,
+                                        'probability_estimates' => $probability,
+                                    ],
+                                    $kernelCombo
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if ($combinations === []) {
+            $combinations[] = [
+                'cost' => (float) $hyperparameters['cost'],
+                'tolerance' => (float) $hyperparameters['tolerance'],
+                'cache_size' => (float) $hyperparameters['cache_size'],
+                'shrinking' => (bool) $hyperparameters['shrinking'],
+                'probability_estimates' => (bool) $hyperparameters['probability_estimates'],
+                'kernel' => $hyperparameters['kernel'],
+                'kernel_options' => $hyperparameters['kernel_options'],
+            ];
+        }
+
+        return $combinations;
+    }
+
+    /**
+     * Merge numeric grid values with user provided overrides.
+     *
+     * @param string $key
+     * @param list<float|int> $defaults
+     * @param array<string, list<mixed>> $userGrid
+     * @param float $min
+     * @param float $max
+     *
+     * @return list<float>
+     */
+    private function mergeGridNumericValues(string $key, array $defaults, array $userGrid, float $min, float $max): array
+    {
+        $values = [];
+
+        foreach ($defaults as $value) {
+            if (is_numeric($value)) {
+                $values[] = $this->clampFloat((float) $value, $min, $max);
+            }
+        }
+
+        if (isset($userGrid[$key])) {
+            foreach ($userGrid[$key] as $value) {
+                if (is_numeric($value)) {
+                    $values[] = $this->clampFloat((float) $value, $min, $max);
+                }
+            }
+        }
+
+        if ($values === []) {
+            return [$this->clampFloat($defaults[0] ?? $min, $min, $max)];
+        }
+
+        $values = array_map(static fn (float $value): float => $value + 0.0, $values);
+
+        return array_values(array_unique($values, SORT_REGULAR));
+    }
+
+    /**
+     * Merge boolean grid values with user provided overrides.
+     *
+     * @param string $key
+     * @param list<mixed> $defaults
+     * @param array<string, list<mixed>> $userGrid
+     *
+     * @return list<bool>
+     */
+    private function mergeGridBooleanValues(string $key, array $defaults, array $userGrid): array
+    {
+        $values = [];
+
+        foreach ($defaults as $value) {
+            $values[] = $this->normalizeBoolean($value, true);
+        }
+
+        if (isset($userGrid[$key])) {
+            foreach ($userGrid[$key] as $value) {
+                $values[] = $this->normalizeBoolean($value, true);
+            }
+        }
+
+        $values = array_values(array_unique($values, SORT_REGULAR));
+
+        return $values === [] ? [true, false] : $values;
+    }
+
+    /**
+     * Merge kernel definitions from defaults and user overrides.
+     *
+     * @param array<string, mixed> $hyperparameters
+     * @param array<string, list<mixed>> $userGrid
+     *
+     * @return list<array{kernel: string, kernel_options: array<string, float|int>}> 
+     */
+    private function mergeSvcKernelGrid(array $hyperparameters, array $userGrid): array
+    {
+        $defaultKernel = is_string($hyperparameters['kernel'] ?? null)
+            ? strtolower($hyperparameters['kernel'])
+            : 'rbf';
+
+        $kernelValues = [$defaultKernel, 'rbf', 'linear'];
+
+        if (isset($userGrid['kernel'])) {
+            foreach ($userGrid['kernel'] as $value) {
+                if (is_string($value)) {
+                    $kernelValues[] = strtolower($value);
+                }
+            }
+        }
+
+        $optionsByKernel = [];
+
+        if (isset($userGrid['kernel_options'])) {
+            foreach ($userGrid['kernel_options'] as $option) {
+                if (! is_array($option)) {
+                    continue;
+                }
+
+                $kernel = $option['kernel'] ?? $option['type'] ?? $defaultKernel;
+                $kernel = is_string($kernel) ? strtolower($kernel) : $defaultKernel;
+
+                $optionSet = $option;
+                unset($optionSet['kernel'], $optionSet['type']);
+
+                $optionsByKernel[$kernel][] = is_array($optionSet) ? $optionSet : [];
+                $kernelValues[] = $kernel;
+            }
+        }
+
+        $kernelValues = array_values(array_unique(array_filter($kernelValues, static fn ($value) => is_string($value))));
+
+        $combinations = [];
+        $seen = [];
+
+        foreach ($kernelValues as $kernel) {
+            $optionSets = $optionsByKernel[$kernel] ?? [];
+
+            if ($optionSets === []) {
+                $optionSets[] = $kernel === $defaultKernel
+                    ? ($hyperparameters['kernel_options'] ?? [])
+                    : [];
+            }
+
+            foreach ($optionSets as $optionSet) {
+                $normalizedOptions = $this->resolveSvcKernelOptions($kernel, is_array($optionSet) ? $optionSet : []);
+                $key = $kernel . ':' . serialize($normalizedOptions);
+
+                if (isset($seen[$key])) {
+                    continue;
+                }
+
+                $seen[$key] = true;
+                $combinations[] = [
+                    'kernel' => $kernel,
+                    'kernel_options' => $normalizedOptions,
+                ];
+            }
+        }
+
+        if ($combinations === []) {
+            $combinations[] = [
+                'kernel' => $defaultKernel,
+                'kernel_options' => $this->resolveSvcKernelOptions(
+                    $defaultKernel,
+                    $hyperparameters['kernel_options'] ?? []
+                ),
+            ];
+        }
+
+        return $combinations;
+    }
+
+    /**
+     * Resolve SVC kernel configuration.
+     *
+     * @param string $kernel
+     * @param array<string, mixed> $options
+     *
+     * @return array{type: int, instance: object|null}
+     */
+    private function resolveSvcKernel(string $kernel, array $options): array
+    {
+        $kernel = strtolower($kernel);
+        $allowed = [
+            'linear' => Kernel::LINEAR,
+            'polynomial' => Kernel::POLYNOMIAL,
+            'sigmoid' => Kernel::SIGMOID,
+            'precomputed' => Kernel::PRECOMPUTED,
+            'rbf' => Kernel::RBF,
+        ];
+
+        if (! isset($allowed[$kernel])) {
+            $kernel = 'rbf';
+        }
+
+        $normalizedOptions = $this->resolveSvcKernelOptions($kernel, $options);
+        $instance = $this->instantiateSvcKernelObject($kernel, $normalizedOptions);
+
+        return [
+            'type' => $allowed[$kernel],
+            'instance' => $instance,
+        ];
+    }
+
+    /**
+     * Instantiate the kernel object if the php-ml implementation is available.
+     *
+     * @param string $kernel
+     * @param array<string, mixed> $options
+     */
+    private function instantiateSvcKernelObject(string $kernel, array $options): ?object
+    {
+        $gamma = (float) ($options['gamma'] ?? 0.5);
+        $degree = (int) ($options['degree'] ?? 3);
+        $coef0 = (float) ($options['coef0'] ?? 0.0);
+
+        $candidates = match ($kernel) {
+            'linear' => [
+                [\Phpml\SupportVectorMachine\Kernel\LinearKernel::class, []],
+                [\Phpml\SupportVectorMachine\Kernel\Linear::class, []],
+            ],
+            'polynomial' => [
+                [\Phpml\SupportVectorMachine\Kernel\PolynomialKernel::class, [$degree, $gamma, $coef0]],
+                [\Phpml\SupportVectorMachine\Kernel\Polynomial::class, [$degree, $gamma, $coef0]],
+            ],
+            'sigmoid' => [
+                [\Phpml\SupportVectorMachine\Kernel\SigmoidKernel::class, [$gamma, $coef0]],
+                [\Phpml\SupportVectorMachine\Kernel\Sigmoid::class, [$gamma, $coef0]],
+            ],
+            default => [
+                [\Phpml\SupportVectorMachine\Kernel\RbfKernel::class, [$gamma]],
+                [\Phpml\SupportVectorMachine\Kernel\RBF::class, [$gamma]],
+            ],
+        };
+
+        foreach ($candidates as [$class, $arguments]) {
+            if (! class_exists($class)) {
+                continue;
+            }
+
+            try {
+                return new $class(...$arguments);
+            } catch (ArgumentCountError|TypeError) {
+                continue;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Normalize kernel-specific options.
+     *
+     * @param string $kernel
+     * @param array<string, mixed> $options
+     *
+     * @return array<string, float|int>
+     */
+    private function resolveSvcKernelOptions(string $kernel, array $options): array
+    {
+        $kernel = strtolower($kernel);
+
+        return match ($kernel) {
+            'polynomial' => [
+                'degree' => max(1, min((int) ($options['degree'] ?? 3), 10)),
+                'gamma' => $this->clampFloat((float) ($options['gamma'] ?? 1.0), 1.0e-4, 10.0),
+                'coef0' => $this->clampFloat((float) ($options['coef0'] ?? 0.0), -10.0, 10.0),
+            ],
+            'sigmoid' => [
+                'gamma' => $this->clampFloat((float) ($options['gamma'] ?? 0.5), 1.0e-4, 10.0),
+                'coef0' => $this->clampFloat((float) ($options['coef0'] ?? 0.0), -10.0, 10.0),
+            ],
+            'rbf' => [
+                'gamma' => $this->clampFloat((float) ($options['gamma'] ?? 0.5), 1.0e-4, 10.0),
+            ],
+            default => [],
+        };
+    }
+
+    /**
+     * Normalize a boolean value with a fallback.
+     */
+    private function normalizeBoolean(mixed $value, bool $default): bool
+    {
+        if (is_bool($value)) {
+            return $value;
+        }
+
+        $filtered = filter_var($value, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+
+        return $filtered ?? $default;
+    }
+
+    /**
+     * Clamp a floating point value between the provided bounds.
+     */
+    private function clampFloat(float $value, float $min, float $max): float
+    {
+        return max($min, min($max, $value));
+    }
+
+    /**
      * Compute basic statistics for each feature.
      *
      * @param string $modelType
@@ -665,11 +1034,7 @@ class ModelTrainingService
         ?callable $progressNotifier
     ): object {
         return match ($modelType) {
-            'svc' => new SVC(
-                (int) ($params['iterations'] ?? $defaults['iterations']),
-                (float) ($params['learning_rate'] ?? $defaults['learning_rate']),
-                (float) ($params['lambda'] ?? $defaults['lambda'])
-            ),
+            'svc' => $this->buildSvcClassifier($params, $defaults),
             'knn' => new KNearestNeighbors((int) ($params['k'] ?? $defaults['k'])),
             'naive_bayes' => new NaiveBayes(),
             'decision_tree' => new DecisionTree(
@@ -679,6 +1044,49 @@ class ModelTrainingService
             'mlp' => $this->buildMlpClassifier($params, $defaults),
             default => $this->buildLogisticClassifier($params, $defaults, $progressNotifier),
         };
+    }
+
+    /**
+     * Build an SVC classifier using cost, tolerance, cache size and kernel configuration.
+     *
+     * @param array<string, mixed> $params
+     * @param array<string, mixed> $defaults
+     *
+     * @return SVC
+     */
+    private function buildSvcClassifier(array $params, array $defaults): SVC
+    {
+        $cost = (float) ($params['cost'] ?? $defaults['cost'] ?? 1.0);
+        $tolerance = (float) ($params['tolerance'] ?? $defaults['tolerance'] ?? 0.001);
+        $cacheSize = (float) ($params['cache_size'] ?? $defaults['cache_size'] ?? 100.0);
+        $shrinking = $this->normalizeBoolean($params['shrinking'] ?? $defaults['shrinking'] ?? true, true);
+        $probabilityEstimates = $this->normalizeBoolean(
+            $params['probability_estimates'] ?? $defaults['probability_estimates'] ?? true,
+            true
+        );
+        $kernelType = is_string($params['kernel'] ?? null)
+            ? strtolower($params['kernel'])
+            : ($defaults['kernel'] ?? 'rbf');
+
+        $kernelOptions = [];
+
+        if (isset($params['kernel_options']) && is_array($params['kernel_options'])) {
+            $kernelOptions = $params['kernel_options'];
+        } elseif (isset($defaults['kernel_options']) && is_array($defaults['kernel_options'])) {
+            $kernelOptions = $defaults['kernel_options'];
+        }
+
+        $kernel = $this->resolveSvcKernel((string) $kernelType, $kernelOptions);
+
+        return new SVC(
+            $kernel['type'],
+            $cost,
+            $tolerance,
+            $cacheSize,
+            $shrinking,
+            $probabilityEstimates,
+            $kernel['instance']
+        );
     }
 
     /**
@@ -1162,6 +1570,13 @@ class ModelTrainingService
      *     normalization: string,
      *     imputation_strategy: string,
      *     lambda: float,
+     *     cost: float,
+     *     tolerance: float,
+     *     cache_size: float,
+     *     shrinking: bool,
+     *     probability_estimates: bool,
+     *     kernel: string,
+     *     kernel_options: array<string, float|int>,
      *     k: int,
      *     max_depth: int,
      *     min_samples_split: int,
@@ -1188,6 +1603,15 @@ class ModelTrainingService
         $normalization = $this->normalizeNormalizerType($input['normalization'] ?? null);
         $imputation = $this->normalizeImputationStrategy($input['imputation_strategy'] ?? null);
         $lambda = isset($input['lambda']) ? (float) $input['lambda'] : 0.0001;
+        $cost = isset($input['cost']) ? (float) $input['cost'] : 1.0;
+        $tolerance = isset($input['tolerance']) ? (float) $input['tolerance'] : 0.001;
+        $cacheSize = isset($input['cache_size']) ? (float) $input['cache_size'] : 100.0;
+        $shrinking = $this->normalizeBoolean($input['shrinking'] ?? true, true);
+        $probabilityEstimates = $this->normalizeBoolean($input['probability_estimates'] ?? true, true);
+        $kernel = is_string($input['kernel'] ?? null) ? strtolower($input['kernel']) : 'rbf';
+        $kernelOptionsInput = isset($input['kernel_options']) && is_array($input['kernel_options'])
+            ? $input['kernel_options']
+            : [];
         $k = isset($input['k']) ? (int) $input['k'] : 5;
         $maxDepth = isset($input['max_depth']) ? (int) $input['max_depth'] : 5;
         $minSamplesSplit = isset($input['min_samples_split']) ? (int) $input['min_samples_split'] : 2;
@@ -1202,6 +1626,16 @@ class ModelTrainingService
         $l2Penalty = max(0.0, min($l2Penalty, 10.0));
         $logInterval = max(1, min($logInterval, $iterations));
         $lambda = max(0.0, min($lambda, 1.0));
+        $cost = $this->clampFloat($cost, 0.0001, 1000.0);
+        $tolerance = $this->clampFloat($tolerance, 1.0e-6, 0.1);
+        $cacheSize = $this->clampFloat($cacheSize, 1.0, 4096.0);
+        $allowedKernels = ['linear', 'rbf', 'polynomial', 'sigmoid', 'precomputed'];
+
+        if (! in_array($kernel, $allowedKernels, true)) {
+            $kernel = 'rbf';
+        }
+
+        $kernelOptions = $this->resolveSvcKernelOptions($kernel, $kernelOptionsInput);
         $k = max(1, min($k, 21));
         $maxDepth = max(2, min($maxDepth, 20));
         $minSamplesSplit = max(2, min($minSamplesSplit, 20));
@@ -1232,6 +1666,13 @@ class ModelTrainingService
             'normalization' => $normalization,
             'imputation_strategy' => $imputation,
             'lambda' => $lambda,
+            'cost' => $cost,
+            'tolerance' => $tolerance,
+            'cache_size' => $cacheSize,
+            'shrinking' => $shrinking,
+            'probability_estimates' => $probabilityEstimates,
+            'kernel' => $kernel,
+            'kernel_options' => $kernelOptions,
             'k' => $k,
             'max_depth' => $maxDepth,
             'min_samples_split' => $minSamplesSplit,
