@@ -141,22 +141,18 @@ class GenerateHeatmapJob implements ShouldQueue
         $metadata = $model->metadata ?? [];
         $artifactPath = $this->resolveArtifactPathFromMetadata($metadata);
 
-        if ($artifactPath === null) {
+        $disk = Storage::disk('local');
+
+        if ($artifactPath === null || ! $disk->exists($artifactPath)) {
             $artifactPath = $this->findMostRecentArtifactOnDisk($model);
 
-            if ($artifactPath !== null) {
+            if ($artifactPath !== null && $disk->exists($artifactPath)) {
                 $this->storeArtifactPathOnModel($model, $artifactPath);
             }
         }
 
-        if ($artifactPath === null) {
+        if ($artifactPath === null || ! $disk->exists($artifactPath)) {
             throw new RuntimeException('Trained artifact for model is unavailable.');
-        }
-
-        $disk = Storage::disk('local');
-
-        if (! $disk->exists($artifactPath)) {
-            throw new RuntimeException(sprintf('Model artifact "%s" could not be found.', $artifactPath));
         }
 
         try {
