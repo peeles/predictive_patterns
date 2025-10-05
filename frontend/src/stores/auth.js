@@ -10,6 +10,10 @@ export const useAuthStore = defineStore('auth', () => {
     const hasAttemptedRestore = ref(false)
     let restorePromise = null
 
+    function setHasRefreshSession(value) {
+        hasRefreshSession.value = Boolean(value)
+    }
+
     function clearState() {
         token.value = null
         user.value = null
@@ -36,14 +40,20 @@ export const useAuthStore = defineStore('auth', () => {
         const { email, password } = credentials ?? {}
         await ensureCsrfCookie()
 
-        const response = await api.post('/auth/login', { email, password })
-        const payload = extractAuthPayload(response)
-        token.value = payload.accessToken ?? null
-        user.value = payload.user ?? null
-        hasRefreshSession.value = Boolean(token.value)
-        hasAttemptedRestore.value = true
-        await ensureCsrfCookie({ force: true, reason: 'login' })
-        return user.value
+        try {
+            const response = await api.post('/auth/login', { email, password })
+            const payload = extractAuthPayload(response)
+
+            token.value = payload.accessToken ?? null
+            user.value = payload.user ?? null
+            setHasRefreshSession(true);
+            hasAttemptedRestore.value = true;
+            await ensureCsrfCookie({ force: true, reason: 'login' });
+
+            return user.value;
+        } catch (error) {
+            setHasRefreshSession(false)
+        }
     }
 
     async function refresh(options = {}) {
@@ -57,16 +67,17 @@ export const useAuthStore = defineStore('auth', () => {
         try {
             const response = await api.post('/auth/refresh')
             const payload = extractAuthPayload(response)
+
             token.value = payload.accessToken ?? null
             user.value = payload.user ?? null
-            hasRefreshSession.value = Boolean(token.value)
+            setHasRefreshSession(true)
             hasAttemptedRestore.value = true
+
             return token.value
         } catch {
-            hasRefreshSession.value = false
+            setHasRefreshSession(false)
             clearState()
             hasAttemptedRestore.value = true
-            return null
         }
     }
 
@@ -82,9 +93,9 @@ export const useAuthStore = defineStore('auth', () => {
         } catch {
             // ignore logout errors
         }
-        hasRefreshSession.value = false
-        hasAttemptedRestore.value = true
-        clearState()
+        setHasRefreshSession(false);
+        hasAttemptedRestore.value = true;
+        clearState();
     }
 
     async function restoreSession(options = {}) {
@@ -125,5 +136,7 @@ export const useAuthStore = defineStore('auth', () => {
         canRefresh,
         hasAttemptedSessionRestore,
         isSessionHydrated,
+        setHasRefreshSession,
+        hasRefreshSession
     }
 })
