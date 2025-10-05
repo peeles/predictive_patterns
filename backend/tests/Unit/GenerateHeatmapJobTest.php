@@ -25,6 +25,7 @@ use Phpml\Exception\SerializeException;
 use Phpml\ModelManager;
 use Phpml\Preprocessing\Imputer;
 use Phpml\Preprocessing\Normalizer;
+use ReflectionMethod;
 use Tests\TestCase;
 use Throwable;
 
@@ -211,6 +212,98 @@ class GenerateHeatmapJobTest extends TestCase
         $this->assertTrue(Storage::disk('local')->exists($result['artifact_path']));
     }
 
+    public function test_handle_honours_schema_mapping_for_predictions(): void
+    {
+        Storage::fake('local');
+
+        $dataset = Dataset::factory()->create([
+            'source_type' => 'file',
+            'file_path' => 'datasets/mapped-unit-test.csv',
+            'mime_type' => 'text/csv',
+            'schema_mapping' => [
+                'timestamp' => 'event_time',
+                'latitude' => 'lat_deg',
+                'longitude' => 'lon_deg',
+                'category' => 'incident_type',
+                'risk' => 'risk_index',
+                'label' => 'label_flag',
+            ],
+        ]);
+
+        Storage::disk('local')->put($dataset->file_path, $this->mappedDatasetCsv());
+
+        $model = PredictiveModel::factory()->create([
+            'dataset_id' => $dataset->id,
+            'metadata' => [],
+            'metrics' => null,
+        ]);
+
+        $run = TrainingRun::query()->create([
+            'model_id' => $model->id,
+            'status' => TrainingStatus::Queued,
+            'queued_at' => now(),
+        ]);
+
+        $trainingService = app(ModelTrainingService::class);
+
+        $result = $trainingService->train($run, $model, [
+            'learning_rate' => 0.2,
+            'iterations' => 600,
+            'validation_split' => 0.25,
+        ]);
+
+        $model->forceFill([
+            'metadata' => ['artifact_path' => $result['artifact_path']],
+            'metrics' => $result['metrics'],
+        ])->save();
+
+        $parameters = [
+            'center' => ['lat' => 40.6, 'lng' => -73.95],
+            'radius_km' => 20,
+        ];
+
+        $prediction = Prediction::query()->create([
+            'model_id' => $model->id,
+            'dataset_id' => $dataset->id,
+            'status' => PredictionStatus::Queued,
+            'parameters' => $parameters,
+            'queued_at' => now(),
+        ]);
+
+        $job = new GenerateHeatmapJob($prediction->id, $parameters);
+        $job->handle();
+
+        $prediction->refresh()->load('outputs');
+
+        $this->assertEquals(PredictionStatus::Completed, $prediction->status);
+        $this->assertNotEmpty($prediction->outputs);
+
+        $artifact = json_decode(
+            Storage::disk('local')->get($result['artifact_path']),
+            true,
+            512,
+            JSON_THROW_ON_ERROR
+        );
+
+        $datasetContext = $this->invokeLoadDatasetRows($job, $prediction);
+        $entries = $this->invokePrepareEntries(
+            $job,
+            $datasetContext['rows'],
+            $artifact['categories'],
+            $datasetContext['column_map']
+        );
+
+        $this->assertNotEmpty($entries);
+
+        $first = $entries[0];
+
+        $this->assertInstanceOf(CarbonImmutable::class, $first['timestamp']);
+        $this->assertSame('robbery', $first['category']);
+
+        $summary = $prediction->outputs->first()->payload['summary'] ?? [];
+        $this->assertGreaterThanOrEqual(count($entries), $summary['count'] ?? 0);
+    }
+
     private function datasetCsv(): string
     {
         return implode("\n", [
@@ -227,6 +320,53 @@ class GenerateHeatmapJobTest extends TestCase
             '2024-01-10T00:00:00Z,40.0,-73.9,assault,0.88,1',
             '',
         ]);
+    }
+
+    private function mappedDatasetCsv(): string
+    {
+        return implode("\n", [
+            'event_time,lat_deg,lon_deg,incident_type,risk_index,label_flag',
+            '2024-02-01T00:00:00Z,40.6,-73.95,robbery,0.42,1',
+            '2024-02-02T00:00:00Z,40.6,-73.96,robbery,0.45,1',
+            '2024-02-03T12:00:00Z,40.61,-73.95,assault,0.20,0',
+        ]);
+    }
+
+    /**
+     * @return array{
+     *     rows: array<int, array<string, string|null>>,
+     *     column_map: array<string, string>
+     * }
+     */
+    private function invokeLoadDatasetRows(GenerateHeatmapJob $job, Prediction $prediction): array
+    {
+        $method = new ReflectionMethod(GenerateHeatmapJob::class, 'loadDatasetRows');
+        $method->setAccessible(true);
+
+        /** @var array{rows: array<int, array<string, string|null>>, column_map: array<string, string>} $result */
+        $result = $method->invoke($job, $prediction);
+
+        return $result;
+    }
+
+    /**
+     * @param list<string> $categories
+     *
+     * @return list<array{timestamp: CarbonImmutable, latitude: float, longitude: float, category: string, features: list<float>}>
+     */
+    private function invokePrepareEntries(
+        GenerateHeatmapJob $job,
+        array $rows,
+        array $categories,
+        array $columnMap
+    ): array {
+        $method = new ReflectionMethod(GenerateHeatmapJob::class, 'prepareEntries');
+        $method->setAccessible(true);
+
+        /** @var list<array{timestamp: CarbonImmutable, latitude: float, longitude: float, category: string, features: list<float>}> $entries */
+        $entries = $method->invoke($job, $rows, $categories, $columnMap);
+
+        return $entries;
     }
 
     /**
