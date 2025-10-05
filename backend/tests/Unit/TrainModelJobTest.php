@@ -87,6 +87,65 @@ class TrainModelJobTest extends TestCase
         $this->assertSame($model->hyperparameters, $run->hyperparameters);
     }
 
+    public function test_handle_trains_svc_without_type_errors(): void
+    {
+        Storage::fake('local');
+        Event::fake();
+        Redis::shouldReceive('setex')->zeroOrMoreTimes()->andReturnTrue();
+        Redis::shouldReceive('publish')->zeroOrMoreTimes()->andReturnTrue();
+        Redis::shouldReceive('get')->zeroOrMoreTimes()->andReturn(null);
+        Redis::shouldReceive('del')->zeroOrMoreTimes()->andReturnTrue();
+
+        $dataset = Dataset::factory()->create([
+            'source_type' => 'file',
+            'file_path' => 'datasets/svc-job.csv',
+            'mime_type' => 'text/csv',
+        ]);
+
+        Storage::disk('local')->put($dataset->file_path, $this->datasetCsv());
+
+        $model = PredictiveModel::factory()->create([
+            'dataset_id' => $dataset->id,
+            'status' => ModelStatus::Draft,
+            'metadata' => [],
+            'metrics' => null,
+            'hyperparameters' => null,
+        ]);
+
+        $run = TrainingRun::query()->create([
+            'model_id' => $model->id,
+            'status' => TrainingStatus::Queued,
+            'queued_at' => now(),
+        ]);
+
+        $job = new TrainModelJob($run->id, [
+            'model_type' => 'svc',
+            'cost' => 1.0,
+            'tolerance' => 0.001,
+            'cache_size' => 100.0,
+            'shrinking' => true,
+            'probability_estimates' => false,
+            'kernel' => 'rbf',
+            'kernel_options' => ['gamma' => 0.5],
+        ]);
+
+        $job->handle(
+            app(ModelTrainingService::class),
+            app(ModelStatusService::class),
+        );
+
+        $run->refresh();
+        $model->refresh();
+
+        $this->assertEquals(TrainingStatus::Completed, $run->status);
+        $this->assertEquals(ModelStatus::Active, $model->status);
+        $this->assertSame('svc', $model->hyperparameters['model_type']);
+        $this->assertSame('svc', $run->hyperparameters['model_type']);
+        $this->assertSame('rbf', $model->hyperparameters['kernel']);
+        $this->assertArrayHasKey('cost', $model->hyperparameters);
+        $this->assertArrayHasKey('tolerance', $model->hyperparameters);
+    }
+
     public function test_handle_marks_run_failed_when_training_service_throws(): void
     {
         Storage::fake('local');
