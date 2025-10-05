@@ -620,7 +620,7 @@ class PoliceCrimeIngestionService
 
         if (!$dryRun && $insertable > 0) {
             Crime::query()->insert($buffer);
-            $this->h3AggregationService->bumpCacheVersion();
+            $this->h3AggregationService->invalidateAggregatesForRecords($buffer);
         }
 
         $buffer = [];

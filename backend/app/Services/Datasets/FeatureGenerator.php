@@ -9,6 +9,7 @@ use Carbon\CarbonImmutable;
 use DateTimeImmutable;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\LazyCollection;
 use Illuminate\Support\Str;
 use JsonException;
 use Throwable;
@@ -41,36 +42,35 @@ class FeatureGenerator
         Feature::query()->where('dataset_id', $dataset->getKey())->delete();
 
         $index = 0;
-        $batch = [];
-        $batchSize = 500;
-        $timestamp = now()->toDateTimeString();
+        $batchSize = 1000;
 
         try {
-            foreach ($this->csvParser->readDatasetRows($path, $dataset->mime_type) as $row) {
-                if (! is_array($row)) {
-                    continue;
-                }
-
-                $featureData = $this->buildFeatureFromRow($dataset, $schema, $row, $index);
-
-                if ($featureData === null) {
-                    continue;
-                }
-
-                $batch[] = $this->prepareFeatureForInsertion($dataset, $featureData, $timestamp);
-
-                if (count($batch) >= $batchSize) {
-                    $this->insertFeatureBatch($batch);
+            $this->csvParser
+                ->readDatasetRows($path, $dataset->mime_type)
+                ->chunk($batchSize)
+                ->each(function (LazyCollection $chunk) use ($dataset, $schema, &$index) {
                     $batch = [];
                     $timestamp = now()->toDateTimeString();
-                }
 
-                $index++;
-            }
+                    foreach ($chunk as $row) {
+                        if (! is_array($row)) {
+                            $index++;
+                            continue;
+                        }
 
-            if ($batch !== []) {
-                $this->insertFeatureBatch($batch);
-            }
+                        $featureData = $this->buildFeatureFromRow($dataset, $schema, $row, $index);
+
+                        if ($featureData !== null) {
+                            $batch[] = $this->prepareFeatureForInsertion($dataset, $featureData, $timestamp);
+                        }
+
+                        $index++;
+                    }
+
+                    if ($batch !== []) {
+                        $this->insertFeatureBatch($batch);
+                    }
+                });
         } catch (Throwable $exception) {
             Log::warning('Failed to derive dataset features', [
                 'dataset_id' => $dataset->getKey(),
