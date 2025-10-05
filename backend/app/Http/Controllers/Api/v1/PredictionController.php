@@ -3,18 +3,15 @@
 namespace App\Http\Controllers\Api\v1;
 
 use App\Enums\PredictionStatus;
-use App\Http\Controllers\Controller;
 use App\Http\Requests\PredictRequest;
 use App\Http\Requests\PredictionIndexRequest;
 use App\Http\Resources\PredictionCollection;
 use App\Http\Resources\PredictionDetailResource;
-use App\Http\Resources\PredictionResource;
 use App\Models\Dataset;
 use App\Models\Prediction;
 use App\Models\PredictiveModel;
 use App\Services\PredictionService;
 use App\Support\InteractsWithPagination;
-use App\Transformers\PredictionTransformer;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -144,7 +141,7 @@ class PredictionController extends BaseController
      */
     private function applyStatusFilter(Builder $query, mixed $status): void
     {
-        if ($status === null || $status === '' || (is_array($status))) {
+        if ($status === null || $status === '') {
             return;
         }
 
