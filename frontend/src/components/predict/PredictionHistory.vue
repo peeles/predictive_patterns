@@ -182,7 +182,7 @@
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
-import PaginationControls from '../pagination/PaginationControls.vue'
+import PaginationControls from '../common/pagination/PaginationControls.vue'
 import { useModelStore } from '../../stores/model'
 import { usePredictionStore } from '../../stores/prediction'
 

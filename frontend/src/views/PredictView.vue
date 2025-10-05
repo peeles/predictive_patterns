@@ -1,26 +1,21 @@
 <template>
     <div class="flex flex-col min-h-full space-y-6">
-        <header class="flex flex-wrap items-center justify-between">
-            <div class="space-y-2">
-                <p class="text-xs font-semibold uppercase tracking-wider text-stone-500">
-                    Forecast Workspace
-                </p>
-                <h1 class="text-2xl font-semibold text-stone-900">
-                    Predictive Mapping
-                </h1>
-                <p class="text-sm text-stone-600">
-                    Configure the forecast horizon and geography to build a fresh prediction using the latest ingested data.
-                </p>
-            </div>
-            <button
-                v-if="isAdmin"
-                class="inline-flex items-center justify-center rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 focus-visible:outline  focus-visible:outline-offset-2 focus-visible:outline-blue-500"
-                type="button"
-                @click="openWizard"
-            >
-                Launch predict wizard
-            </button>
-        </header>
+        <PageHeader
+            :page-tag="'Forecast Workspace'"
+            :page-title="'Predictive Mapping'"
+            :page-subtitle="'Configure the forecast horizon and geography to build a fresh prediction using the latest ingested data.'"
+        >
+            <template #actions>
+                <button
+                    v-if="isAdmin"
+                    class="inline-flex items-center justify-center rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 focus-visible:outline  focus-visible:outline-offset-2 focus-visible:outline-blue-500"
+                    type="button"
+                    @click="openWizard"
+                >
+                    Launch predict wizard
+                </button>
+            </template>
+        </PageHeader>
 
         <BaseTabs
             v-model="activeTab"
@@ -47,7 +42,7 @@
                                     />
                                 </template>
                                 <template #fallback>
-                                    <div class="flex flex-1 flex-[1_0_28rem] md:flex-[1_0_34rem] bg-white p-6 shadow-sm shadow-stone-200/70">
+                                    <div class="flex flex-[1_0_28rem] md:flex-[1_0_34rem] bg-white p-6 shadow-sm shadow-stone-200/70">
                                         <p class="text-sm text-stone-500">Loading map…</p>
                                     </div>
                                 </template>
@@ -114,6 +109,7 @@ import { useAuthStore } from '../stores/auth.js'
 import PredictGenerateModal from '../components/predict/PredictGenerateModal.vue'
 import BaseTabs from '../components/common/BaseTabs.vue'
 import BaseTabPanel from '../components/common/BaseTabPanel.vue'
+import PageHeader from "../components/common/PageHeader.vue";
 
 const MapView = defineAsyncComponent(() => import('../components/map/MapView.vue'))
 

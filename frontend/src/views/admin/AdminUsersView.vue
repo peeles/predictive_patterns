@@ -1,21 +1,20 @@
 <template>
     <div class="space-y-6">
-        <header class="flex flex-wrap items-center justify-between gap-4">
-            <div class="space-y-2">
-                <p class="text-xs font-semibold uppercase tracking-wider text-stone-500">Administration</p>
-                <h1 class="text-2xl font-semibold text-stone-900">User management</h1>
-                <p class="mt-1 max-w-2xl text-sm text-stone-600">
-                    Control who can access predictive tooling, update roles, and reset credentials when required.
-                </p>
-            </div>
-            <button
-                class="inline-flex items-center justify-center rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 focus-visible:outline  focus-visible:outline-offset-2 focus-visible:outline-blue-500"
-                type="button"
-                @click="openCreateModal"
-            >
-                Invite user
-            </button>
-        </header>
+        <PageHeader
+            :page-tag="'Administration'"
+            :page-title="'User Management'"
+            :page-subtitle="'Manage users, roles, and permissions within your workspace.'"
+        >
+            <template #actions>
+                <button
+                    class="inline-flex items-center justify-center rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 focus-visible:outline  focus-visible:outline-offset-2 focus-visible:outline-blue-500"
+                    type="button"
+                    @click="openCreateModal"
+                >
+                    Invite user
+                </button>
+            </template>
+        </PageHeader>
 
         <UserCreateModal
             :open="createModalOpen"
@@ -65,6 +64,7 @@ import UserRoleModal from '../../components/users/UserRoleModal.vue'
 import UserResetPasswordModal from '../../components/users/UserResetPasswordModal.vue'
 import UserTable from '../../components/users/UserTable.vue'
 import { useUserStore } from '../../stores/user'
+import PageHeader from "../../components/common/PageHeader.vue";
 
 const userStore = useUserStore()
 const { users, loading, roles, actionState, error } = storeToRefs(userStore)

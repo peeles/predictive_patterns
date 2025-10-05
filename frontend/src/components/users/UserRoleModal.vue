@@ -1,5 +1,9 @@
 <template>
-    <BaseModal :open="open" dialog-class="max-w-lg" @close="handleClose">
+    <BaseModal
+        :open="open"
+        :dialog-class="'max-w-lg'"
+        @close="handleClose"
+    >
         <template #header>
             <h2 class="text-lg font-semibold text-stone-900">Update role</h2>
             <p class="mt-1 text-sm text-stone-600">

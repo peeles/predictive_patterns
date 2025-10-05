@@ -1,7 +1,12 @@
 <template>
     <section class="space-y-4" aria-labelledby="schema-heading">
         <header>
-            <h3 id="schema-heading" class="text-base font-semibold text-stone-900">Map schema</h3>
+            <h3
+                id="schema-heading"
+                class="text-sm font-semibold uppercase tracking-wide text-stone-600"
+            >
+                Map schema
+            </h3>
             <p class="mt-1 text-sm text-stone-600">
                 Align your columns to the platform schema. All required fields must be mapped before continuing.
             </p>

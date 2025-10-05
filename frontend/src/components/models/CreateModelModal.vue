@@ -1,7 +1,9 @@
 <template>
     <BaseModal
         :open="open"
-        @close="close"
+        :dialog-class="'max-w-2xl'"
+        :body-class="'max-h-[70vh]'"
+        @close="handleClose"
     >
         <template #header>
             <h2 class="text-lg font-semibold text-stone-900">Create a new model</h2>
@@ -36,158 +38,154 @@
             @submit.prevent="handleSubmit"
         >
             <div v-if="step === 1" class="space-y-6">
-                <div class="space-y-5 rounded-xl border border-stone-200 bg-stone-50/60 p-5">
+                <div>
+                    <h3 class="text-sm font-semibold uppercase tracking-wide text-stone-600">Model Overview</h3>
+                    <p class="mt-1 text-sm text-stone-600">
+                        Define the core identifiers for the model and connect it to an approved dataset.
+                    </p>
+                </div>
+                <div class="space-y-5 text-stone-700">
                     <div>
-                        <h3 class="text-sm font-semibold uppercase tracking-wide text-stone-600">Model overview</h3>
-                        <p class="mt-1 text-sm text-stone-600">
-                            Define the core identifiers for the model and connect it to an approved dataset.
-                        </p>
+                        <label for="model-name" class="block text-sm font-medium text-stone-700">Model name</label>
+                        <input
+                            id="model-name"
+                            v-model="form.name"
+                            type="text"
+                            name="name"
+                            class="mt-1 block w-full rounded-md border border-stone-300 px-3 py-2 text-sm text-stone-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            placeholder="e.g. Spatial Graph Attention"
+                            autocomplete="off"
+                        />
+                        <p v-if="errors.name" class="mt-1 text-sm text-rose-600">{{ errors.name }}</p>
                     </div>
-                    <div class="space-y-5 text-stone-700">
+                    <div>
+                        <div class="flex flex-wrap items-center justify-between gap-3">
+                            <label for="dataset-id" class="block text-sm font-medium text-stone-700">Dataset</label>
+                            <button
+                                type="button"
+                                class="text-xs font-medium text-blue-600 transition hover:text-blue-700 focus-visible:outline  focus-visible:outline-offset-2 focus-visible:outline-blue-500"
+                                :disabled="datasetLoading"
+                                @click="refreshDatasets"
+                            >
+                                {{ datasetLoading ? 'Refreshing…' : 'Refresh list' }}
+                            </button>
+                        </div>
+                        <input
+                            :list="datasetListId"
+                            id="dataset-id"
+                            v-model="form.datasetId"
+                            type="text"
+                            name="dataset"
+                            class="mt-1 block w-full rounded-md border border-stone-300 px-3 py-2 text-sm text-stone-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            placeholder="Search or enter a dataset identifier"
+                            autocomplete="off"
+                            @focus="ensureDatasetsLoaded"
+                        />
+                        <datalist :id="datasetListId">
+                            <option
+                                v-for="option in datasetOptions"
+                                :key="option.id"
+                                :value="option.id"
+                                :label="datasetLabel(option)"
+                            >
+                                {{ datasetLabel(option) }}
+                            </option>
+                        </datalist>
+                        <p class="mt-1 text-xs text-stone-500">
+                            Start typing to filter existing datasets or leave blank to assign a dataset later.
+                        </p>
+                        <p v-if="datasetError" class="mt-1 text-sm text-rose-600">{{ datasetError }}</p>
+                        <p v-else-if="!datasetLoading && !datasetOptions.length" class="mt-1 text-sm text-stone-500">
+                            No ready datasets are available right now. You can still provide a dataset identifier manually.
+                        </p>
+                        <p v-if="errors.datasetId" class="mt-1 text-sm text-rose-600">{{ errors.datasetId }}</p>
+                    </div>
+                    <div class="grid gap-4 sm:grid-cols-2">
                         <div>
-                            <label for="model-name" class="block text-sm font-medium text-stone-700">Model name</label>
+                            <label for="model-tag" class="block text-sm font-medium text-stone-700">Tag</label>
                             <input
-                                id="model-name"
-                                v-model="form.name"
+                                id="model-tag"
+                                v-model="form.tag"
                                 type="text"
-                                name="name"
+                                name="tag"
                                 class="mt-1 block w-full rounded-md border border-stone-300 px-3 py-2 text-sm text-stone-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                placeholder="e.g. Spatial Graph Attention"
+                                placeholder="Optional tag (e.g. baseline)"
                                 autocomplete="off"
                             />
-                            <p v-if="errors.name" class="mt-1 text-sm text-rose-600">{{ errors.name }}</p>
+                            <p v-if="errors.tag" class="mt-1 text-sm text-rose-600">{{ errors.tag }}</p>
                         </div>
                         <div>
-                            <div class="flex flex-wrap items-center justify-between gap-3">
-                                <label for="dataset-id" class="block text-sm font-medium text-stone-700">Dataset</label>
-                                <button
-                                    type="button"
-                                    class="text-xs font-medium text-blue-600 transition hover:text-blue-700 focus-visible:outline  focus-visible:outline-offset-2 focus-visible:outline-blue-500"
-                                    :disabled="datasetLoading"
-                                    @click="refreshDatasets"
-                                >
-                                    {{ datasetLoading ? 'Refreshing…' : 'Refresh list' }}
-                                </button>
-                            </div>
+                            <label for="model-area" class="block text-sm font-medium text-stone-700">Area</label>
                             <input
-                                :list="datasetListId"
-                                id="dataset-id"
-                                v-model="form.datasetId"
+                                id="model-area"
+                                v-model="form.area"
                                 type="text"
-                                name="dataset"
+                                name="area"
                                 class="mt-1 block w-full rounded-md border border-stone-300 px-3 py-2 text-sm text-stone-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                placeholder="Search or enter a dataset identifier"
+                                placeholder="Optional geography or scope"
                                 autocomplete="off"
-                                @focus="ensureDatasetsLoaded"
                             />
-                            <datalist :id="datasetListId">
-                                <option
-                                    v-for="option in datasetOptions"
-                                    :key="option.id"
-                                    :value="option.id"
-                                    :label="datasetLabel(option)"
-                                >
-                                    {{ datasetLabel(option) }}
-                                </option>
-                            </datalist>
-                            <p class="mt-1 text-xs text-stone-500">
-                                Start typing to filter existing datasets or leave blank to assign a dataset later.
-                            </p>
-                            <p v-if="datasetError" class="mt-1 text-sm text-rose-600">{{ datasetError }}</p>
-                            <p v-else-if="!datasetLoading && !datasetOptions.length" class="mt-1 text-sm text-stone-500">
-                                No ready datasets are available right now. You can still provide a dataset identifier manually.
-                            </p>
-                            <p v-if="errors.datasetId" class="mt-1 text-sm text-rose-600">{{ errors.datasetId }}</p>
+                            <p v-if="errors.area" class="mt-1 text-sm text-rose-600">{{ errors.area }}</p>
                         </div>
-                        <div class="grid gap-4 sm:grid-cols-2">
-                            <div>
-                                <label for="model-tag" class="block text-sm font-medium text-stone-700">Tag</label>
-                                <input
-                                    id="model-tag"
-                                    v-model="form.tag"
-                                    type="text"
-                                    name="tag"
-                                    class="mt-1 block w-full rounded-md border border-stone-300 px-3 py-2 text-sm text-stone-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                    placeholder="Optional tag (e.g. baseline)"
-                                    autocomplete="off"
-                                />
-                                <p v-if="errors.tag" class="mt-1 text-sm text-rose-600">{{ errors.tag }}</p>
-                            </div>
-                            <div>
-                                <label for="model-area" class="block text-sm font-medium text-stone-700">Area</label>
-                                <input
-                                    id="model-area"
-                                    v-model="form.area"
-                                    type="text"
-                                    name="area"
-                                    class="mt-1 block w-full rounded-md border border-stone-300 px-3 py-2 text-sm text-stone-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                    placeholder="Optional geography or scope"
-                                    autocomplete="off"
-                                />
-                                <p v-if="errors.area" class="mt-1 text-sm text-rose-600">{{ errors.area }}</p>
-                            </div>
-                            <div>
-                                <label for="model-version" class="block text-sm font-medium text-stone-700">Version</label>
-                                <input
-                                    id="model-version"
-                                    v-model="form.version"
-                                    type="text"
-                                    name="version"
-                                    class="mt-1 block w-full rounded-md border border-stone-300 px-3 py-2 text-sm text-stone-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                    placeholder="Defaults to 1.0.0"
-                                    autocomplete="off"
-                                />
-                                <p v-if="errors.version" class="mt-1 text-sm text-rose-600">{{ errors.version }}</p>
-                            </div>
+                        <div>
+                            <label for="model-version" class="block text-sm font-medium text-stone-700">Version</label>
+                            <input
+                                id="model-version"
+                                v-model="form.version"
+                                type="text"
+                                name="version"
+                                class="mt-1 block w-full rounded-md border border-stone-300 px-3 py-2 text-sm text-stone-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                placeholder="Defaults to 1.0.0"
+                                autocomplete="off"
+                            />
+                            <p v-if="errors.version" class="mt-1 text-sm text-rose-600">{{ errors.version }}</p>
                         </div>
                     </div>
                 </div>
             </div>
             <div v-else-if="step === 2" class="space-y-6">
-                <div class="space-y-5 rounded-xl border border-stone-200 p-5">
+                <div>
+                    <h3 class="text-sm font-semibold uppercase tracking-wide text-stone-600">Training & metadata</h3>
+                    <p class="mt-1 text-sm text-stone-600">
+                        Provide optional configuration for the initial training job and add descriptive metadata.
+                    </p>
+                </div>
+                <div class="grid gap-4 md:grid-cols-2">
                     <div>
-                        <h3 class="text-sm font-semibold uppercase tracking-wide text-stone-600">Training & metadata</h3>
-                        <p class="mt-1 text-sm text-stone-600">
-                            Provide optional configuration for the initial training job and add descriptive metadata.
-                        </p>
+                        <label for="model-hyperparameters" class="block text-sm font-medium text-stone-700">
+                            Hyperparameters (JSON)
+                        </label>
+                        <textarea
+                            id="model-hyperparameters"
+                            v-model="form.hyperparameters"
+                            name="hyperparameters"
+                            rows="4"
+                            class="mt-1 block w-full rounded-md border border-stone-300 px-3 py-2 text-sm text-stone-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            placeholder='{ "learning_rate": 0.01 }'
+                        ></textarea>
+                        <p v-if="errors.hyperparameters" class="mt-1 text-sm text-rose-600">{{ errors.hyperparameters }}</p>
                     </div>
-                    <div class="grid gap-4 md:grid-cols-2">
-                        <div>
-                            <label for="model-hyperparameters" class="block text-sm font-medium text-stone-700">
-                                Hyperparameters (JSON)
-                            </label>
-                            <textarea
-                                id="model-hyperparameters"
-                                v-model="form.hyperparameters"
-                                name="hyperparameters"
-                                rows="4"
-                                class="mt-1 block w-full rounded-md border border-stone-300 px-3 py-2 text-sm text-stone-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                placeholder='{ "learning_rate": 0.01 }'
-                            ></textarea>
-                            <p v-if="errors.hyperparameters" class="mt-1 text-sm text-rose-600">{{ errors.hyperparameters }}</p>
-                        </div>
-                        <div>
-                            <label for="model-metadata" class="block text-sm font-medium text-stone-700">Metadata (JSON)</label>
-                            <textarea
-                                id="model-metadata"
-                                v-model="form.metadata"
-                                name="metadata"
-                                rows="4"
-                                class="mt-1 block w-full rounded-md border border-stone-300 px-3 py-2 text-sm text-stone-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                placeholder='{ "notes": "First experiment" }'
-                            ></textarea>
-                            <p v-if="errors.metadata" class="mt-1 text-sm text-rose-600">{{ errors.metadata }}</p>
-                        </div>
+                    <div>
+                        <label for="model-metadata" class="block text-sm font-medium text-stone-700">Metadata (JSON)</label>
+                        <textarea
+                            id="model-metadata"
+                            v-model="form.metadata"
+                            name="metadata"
+                            rows="4"
+                            class="mt-1 block w-full rounded-md border border-stone-300 px-3 py-2 text-sm text-stone-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            placeholder='{ "notes": "First experiment" }'
+                        ></textarea>
+                        <p v-if="errors.metadata" class="mt-1 text-sm text-rose-600">{{ errors.metadata }}</p>
                     </div>
-                    <div class="flex items-center gap-3 rounded-lg bg-stone-50 px-4 py-3">
-                        <input
-                            id="auto-train"
-                            v-model="form.autoTrain"
-                            type="checkbox"
-                            class="h-4 w-4 rounded border-stone-300 text-blue-600 focus:ring-blue-500"
-                        />
-                        <label for="auto-train" class="text-sm text-stone-700">Queue an initial training run after creating the model</label>
-                    </div>
+                </div>
+                <div class="flex items-center gap-3 rounded-lg bg-stone-50 px-4 py-3">
+                    <input
+                        id="auto-train"
+                        v-model="form.autoTrain"
+                        type="checkbox"
+                        class="h-4 w-4 rounded border-stone-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    <label for="auto-train" class="text-sm text-stone-700">Queue an initial training run after creating the model</label>
                 </div>
             </div>
         </form>
@@ -195,7 +193,9 @@
         <template #footer>
             <button
                 type="button"
-                class="rounded-md border border-stone-300 px-4 py-2 text-sm font-semibold text-stone-700 shadow-sm transition hover:border-stone-400 hover:text-stone-900 focus-visible:outline  focus-visible:outline-offset-2 focus-visible:outline-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
+                class="rounded-md border border-stone-300 px-4 py-2 text-sm font-semibold text-stone-700 shadow-sm
+                transition hover:border-stone-400 hover:text-stone-900 focus-visible:outline
+                focus-visible:outline-offset-2 focus-visible:outline-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
                 @click="goBack"
                 :disabled="step === 1 || submitting"
             >
@@ -224,7 +224,7 @@
                 <button
                     type="button"
                     class="rounded-md border border-stone-300 px-4 py-2 text-sm font-semibold text-stone-700 shadow-sm transition hover:border-stone-400 hover:text-stone-900 focus-visible:outline  focus-visible:outline-offset-2 focus-visible:outline-blue-500"
-                    @click="close"
+                    @click="handleClose"
                     :disabled="submitting"
                 >
                     Cancel
@@ -259,8 +259,8 @@ const datasetLoaded = ref(false)
 const datasetError = ref('')
 
 const steps = [
-    { id: 1, label: 'Model details' },
-    { id: 2, label: 'Training & metadata' },
+    { id: 1, label: 'Details' },
+    { id: 2, label: 'Metadata' },
 ]
 
 const step = ref(1)
@@ -319,7 +319,7 @@ onBeforeUnmount(() => {
 
 function handleKeydown(event) {
     if (event.key === 'Escape') {
-        close()
+        handleClose()
     }
 }
 
@@ -343,7 +343,7 @@ function reset() {
     step.value = 1
 }
 
-function close() {
+function handleClose() {
     emit('close')
 }
 
@@ -550,6 +550,6 @@ async function submit() {
     }
 
     emit('created', model)
-    close()
+    handleClose()
 }
 </script>

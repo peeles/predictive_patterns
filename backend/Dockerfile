@@ -9,11 +9,14 @@ RUN apt-get update && apt-get install -y \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Install PHP extensions
-RUN docker-php-ext-install pdo_mysql mbstring exif pcntl bcmath gd zip sockets
-RUN pecl install redis && docker-php-ext-enable redis
+RUN docker-php-ext-install pdo_mysql mbstring exif pcntl bcmath gd zip sockets opcache
+RUN pecl install redis && docker-php-ext-enable redis opcache
 
 # Install Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
+
+# Configure PHP
+COPY docker/php.ini /usr/local/etc/php/conf.d/custom.ini
 
 # Copy application
 COPY . /var/www/html

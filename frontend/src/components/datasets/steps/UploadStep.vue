@@ -1,7 +1,12 @@
 <template>
     <section class="space-y-4" aria-labelledby="upload-heading">
         <header>
-            <h3 id="upload-heading" class="text-base font-semibold text-stone-900">Upload dataset</h3>
+            <h3
+                id="upload-heading"
+                class="text-sm font-semibold uppercase tracking-wide text-stone-600"
+            >
+                Upload dataset
+            </h3>
             <p class="mt-1 text-sm text-stone-600">Supported formats: CSV or JSON up to {{ MAX_FILE_SIZE_MB }}MB.</p>
         </header>
         <label

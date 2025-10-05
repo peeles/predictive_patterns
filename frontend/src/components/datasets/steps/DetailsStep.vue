@@ -1,7 +1,15 @@
 <template>
-    <section class="space-y-4" aria-labelledby="details-heading">
+    <section
+        class="space-y-4"
+        aria-labelledby="details-heading"
+    >
         <header>
-            <h3 id="details-heading" class="text-base font-semibold text-slate-900">Dataset details</h3>
+            <h3
+                id="details-heading"
+                class="text-sm font-semibold uppercase tracking-wide text-stone-600"
+            >
+                Dataset details
+            </h3>
             <p class="mt-1 text-sm text-slate-600">
                 Provide a descriptive name and optional summary to help your team identify this dataset later.
             </p>

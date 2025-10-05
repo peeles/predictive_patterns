@@ -1,29 +1,31 @@
 <template>
     <div class="space-y-6">
-        <header class="flex flex-wrap items-center justify-between gap-4">
-            <div>
-                <h1 class="text-2xl font-semibold text-stone-900">{{ dataset?.name ?? 'Dataset details' }}</h1>
-                <p class="mt-1 text-sm text-stone-600">
-                    Review ingestion metadata, source files, and preview rows for this dataset.
-                </p>
-            </div>
-            <div class="flex flex-wrap items-center gap-3">
+        <PageHeader
+            :page-tag="'Datasets'"
+            :page-title="dataset?.name ?? 'Dataset details'"
+            :page-subtitle="'Review ingestion metadata, source files, and preview rows for this dataset.'"
+        >
+            <template #actions>
                 <button
-                    class="inline-flex items-center rounded-md border border-stone-300 px-3 py-1.5 text-sm font-medium text-stone-700 shadow-sm transition hover:bg-stone-50 focus-visible:outline  focus-visible:outline-offset-2 focus-visible:outline-blue-500 disabled:cursor-not-allowed disabled:opacity-70"
+                    class="inline-flex items-center rounded-md border border-stone-300 px-3 py-1.5 text-sm font-medium
+                     text-stone-700 shadow-sm transition hover:bg-stone-50 focus-visible:outline  focus-visible:outline-offset-2
+                      focus-visible:outline-blue-500 disabled:cursor-not-allowed disabled:opacity-70"
                     type="button"
                     :disabled="loading"
                     @click="fetchDataset"
                 >
                     Refresh
                 </button>
-                <RouterLink
-                    class="inline-flex items-center rounded-md bg-stone-900 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-stone-800 focus-visible:outline  focus-visible:outline-offset-2 focus-visible:outline-blue-500"
-                    :to="{ name: 'admin-datasets' }"
-                >
-                    Back to datasets
-                </RouterLink>
-            </div>
-        </header>
+                    <RouterLink
+                        class="inline-flex items-center rounded-md bg-stone-900 px-4 py-2 text-sm font-semibold
+                         text-white shadow-sm transition hover:bg-stone-800 focus-visible:outline  focus-visible:outline-offset-2
+                          focus-visible:outline-blue-500"
+                        :to="{ name: 'admin-datasets' }"
+                    >
+                        Back to datasets
+                    </RouterLink>
+                </template>
+        </PageHeader>
 
         <section class="rounded-xl border border-stone-200 bg-white shadow-sm">
             <div v-if="errorMessage" class="border-b border-rose-200 bg-rose-50 px-6 py-3 text-sm text-rose-700">
@@ -121,17 +123,17 @@
                 </div>
             </header>
             <div class="px-6 py-4">
-                <DataTable
+                <BaseDataTable
                     v-if="!loading"
                     :columns="previewTableColumns"
                     :rows="paginatedPreviewRows"
                     :empty-message="'No preview rows available for this datasets.'"
                 />
-                <DataTable v-else :columns="[]" :rows="[]" loading>
+                <BaseDataTable v-else :columns="[]" :rows="[]" loading>
                     <template #loading>
                         Loading preview…
                     </template>
-                </DataTable>
+                </BaseDataTable>
             </div>
             <PaginationControls
                 v-if="!loading && filteredPreviewRows.length > 0 && totalPreviewPages > 1"
@@ -151,8 +153,9 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import apiClient from '../../services/apiClient'
 import { notifyError } from '../../utils/notifications'
-import DataTable from '../../components/common/DataTable.vue'
-import PaginationControls from '../../components/pagination/PaginationControls.vue'
+import BaseDataTable from '../../components/common/BaseDataTable.vue'
+import PaginationControls from '../../components/common/pagination/PaginationControls.vue'
+import PageHeader from "../../components/common/PageHeader.vue";
 
 const route = useRoute()
 const router = useRouter()

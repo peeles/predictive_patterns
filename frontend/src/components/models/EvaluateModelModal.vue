@@ -1,9 +1,9 @@
 <template>
     <BaseModal
         :open="open"
-        dialog-class="max-w-2xl"
-        body-class="max-h-[70vh]"
-        @close="close"
+        :dialog-class="'max-w-2xl'"
+        :body-class="'max-h-[70vh]'"
+        @close="handleClose"
     >
         <template #header>
             <h2 class="text-lg font-semibold text-stone-900">Evaluate model</h2>
@@ -172,7 +172,7 @@
                     type="button"
                     class="rounded-md border border-stone-300 px-4 py-2 text-sm font-medium text-stone-700 transition hover:border-stone-400 hover:text-stone-900 focus-visible:outline  focus-visible:outline-offset-2 focus-visible:outline-blue-500"
                     :disabled="submitting"
-                    @click="close"
+                    @click="handleClose"
                 >
                     Cancel
                 </button>
@@ -317,11 +317,11 @@ function normaliseErrorMessage(value) {
 
 function handleKeydown(event) {
     if (event.key === 'Escape') {
-        close()
+        handleClose()
     }
 }
 
-function close() {
+function handleClose() {
     emit('close')
 }
 

@@ -1,34 +1,39 @@
 <template>
     <section
         aria-labelledby="prediction-summary-heading"
-        class="flex h-full flex-col overflow-hidden rounded-3xl border border-stone-200/80 bg-white shadow-xl shadow-stone-200/70"
+        class="flex h-full flex-col overflow-hidden bg-white"
     >
-        <header class="bg-gradient-to-r from-blue-600 via-indigo-500 to-sky-500 px-6 py-6 text-white">
-            <div class="flex flex-wrap items-end justify-between gap-6">
-                <div class="space-y-3">
-                    <p class="text-xs font-semibold uppercase tracking-[0.2em] text-white/70">Latest forecast</p>
-                    <h2 id="prediction-summary-heading" class="text-2xl font-semibold">Prediction insights</h2>
-                    <p class="text-sm text-white/80">
+        <header class="px-6 py-6">
+            <div class="flex flex-wrap items-center justify-between gap-4">
+                <div class="space-y-1">
+                    <p class="text-xs font-semibold uppercase tracking-[0.2em] text-shadow-stone-700/70">Latest forecast</p>
+                    <h2
+                        id="prediction-summary-heading"
+                        class="text-2xl font-semibold text-shadow-stone-600"
+                    >
+                        Prediction insights
+                    </h2>
+                    <p class="text-sm text-stone-700/80">
                         Generated on <time :datetime="summary.generatedAt">{{ formattedGeneratedAt }}</time> for a
                         {{ horizonLabel }} horizon.
                     </p>
                 </div>
                 <div class="flex items-center gap-5">
                     <div
-                        class="relative flex h-28 w-28 items-center justify-center rounded-full border border-white/20 shadow-inner bg-white/10"
+                        class="relative flex h-28 w-28 items-center justify-center rounded-full border border-stone-500/20 shadow-inner bg-stone-500/60"
                         :style="riskDialStyle"
                         role="img"
                         :aria-label="`Risk score ${riskPercentLabel}`"
                     >
-                        <span class="text-3xl font-semibold text-white">{{ riskPercentLabel }}</span>
+                        <span class="text-3xl font-semibold text-stone-700">{{ riskPercentLabel }}</span>
                     </div>
                     <div class="space-y-2 text-right">
-                        <p class="text-sm font-semibold uppercase tracking-wide text-white/70">Risk score</p>
-                        <p class="text-3xl font-semibold leading-none text-white">{{ formattedRiskScore }}</p>
-                        <p class="text-xs text-white/80">
+                        <p class="text-sm font-semibold uppercase tracking-wide text-stone-700/70">Risk score</p>
+                        <p class="text-3xl font-semibold leading-none text-stone-700">{{ formattedRiskScore }}</p>
+                        <p class="text-xs text-stone-700/80">
                             Confidence
                             <span
-                                class="ml-2 inline-flex items-center rounded-full bg-white/15 px-2 py-1 text-xs font-semibold uppercase tracking-wide text-white shadow-sm"
+                                class="ml-2 inline-flex items-center rounded-full bg-white/15 px-2 py-1 text-xs font-semibold uppercase tracking-wide text-stone-700 shadow-sm"
                             >
                                 {{ confidenceLabel }}
                             </span>
@@ -37,7 +42,7 @@
                 </div>
             </div>
         </header>
-        <div class="grid flex-1 gap-6 px-6 py-6 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
+        <div class="grid flex-1 gap-6 px-6 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
             <section
                 aria-labelledby="forecast-snapshot-heading"
                 class="space-y-6 self-start rounded-2xl border border-stone-200/80 bg-stone-50/70 p-6 shadow-inner"
