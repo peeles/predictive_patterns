@@ -2,7 +2,7 @@
 
 namespace App\Services\Datasets;
 
-use Generator;
+use Illuminate\Support\LazyCollection;
 
 class CsvParser
 {
@@ -12,20 +12,20 @@ class CsvParser
      * @param string $path
      * @param string|null $mimeType
      *
-     * @return iterable<array<string, mixed>>
+     * @return LazyCollection<int, array<string, mixed>>
      */
-    public function readDatasetRows(string $path, ?string $mimeType): iterable
+    public function readDatasetRows(string $path, ?string $mimeType): LazyCollection
     {
         $mimeType = $mimeType !== null ? strtolower($mimeType) : null;
 
         if ($mimeType !== null && str_contains($mimeType, 'json')) {
-            return [];
+            return LazyCollection::empty();
         }
 
         $extension = strtolower((string) pathinfo($path, PATHINFO_EXTENSION));
 
         if (in_array($extension, ['json', 'geojson'], true)) {
-            return [];
+            return LazyCollection::empty();
         }
 
         return $this->readCsvRows($path);
@@ -36,45 +36,47 @@ class CsvParser
      *
      * @param string $path
      *
-     * @return iterable<array<string, mixed>>
+     * @return LazyCollection<int, array<string, mixed>>
      */
-    public function readCsvRows(string $path): iterable
+    public function readCsvRows(string $path): LazyCollection
     {
-        $handle = fopen($path, 'rb');
+        return LazyCollection::make(function () use ($path) {
+            $handle = fopen($path, 'rb');
 
-        if ($handle === false) {
-            return [];
-        }
+            if ($handle === false) {
+                return;
+            }
 
-        try {
-            $headers = null;
+            try {
+                $headers = null;
 
-            while (($row = fgetcsv($handle)) !== false) {
-                if ($headers === null) {
-                    $headers = $this->normaliseHeaders($row);
+                while (($row = fgetcsv($handle)) !== false) {
+                    if ($headers === null) {
+                        $headers = $this->normaliseHeaders($row);
 
-                    if ($headers === []) {
-                        break;
+                        if ($headers === []) {
+                            break;
+                        }
+
+                        continue;
                     }
 
-                    continue;
+                    if ($this->isEmptyRow($row)) {
+                        continue;
+                    }
+
+                    $assoc = $this->combineRow($headers, $row);
+
+                    if ($assoc === null || $assoc === []) {
+                        continue;
+                    }
+
+                    yield $assoc;
                 }
-
-                if ($this->isEmptyRow($row)) {
-                    continue;
-                }
-
-                $assoc = $this->combineRow($headers, $row);
-
-                if ($assoc === null || $assoc === []) {
-                    continue;
-                }
-
-                yield $assoc;
+            } finally {
+                fclose($handle);
             }
-        } finally {
-            fclose($handle);
-        }
+        });
     }
 
     /**

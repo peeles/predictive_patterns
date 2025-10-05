@@ -6,9 +6,12 @@ use App\DataTransferObjects\HexAggregate;
 use App\Models\Crime;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
+use Closure;
+use DateTimeInterface;
+use Illuminate\Cache\TaggableStore;
+use Illuminate\Contracts\Cache\Repository as CacheRepository;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\Cache;
 use InvalidArgumentException;
 
 /**
@@ -18,8 +21,15 @@ class H3AggregationService
 {
     private const SUPPORTED_RESOLUTIONS = [6, 7, 8];
     private const CACHE_PREFIX = 'h3_aggregations:';
-    public const CACHE_VERSION_KEY = self::CACHE_PREFIX.'version';
+    public const CACHE_VERSION_KEY = self::CACHE_PREFIX . 'version';
     private const CACHE_TTL_MINUTES = 10;
+    private const TAG_PREFIX = self::CACHE_PREFIX . 'tag:';
+    private const TAG_ALL = self::TAG_PREFIX . 'all';
+    private const TAG_MONTH_ALL = self::TAG_PREFIX . 'month:all';
+
+    public function __construct(private readonly CacheRepository $cache)
+    {
+    }
 
     /**
      * Aggregate crimes across H3 cells intersecting the provided bounding box.
@@ -42,8 +52,11 @@ class H3AggregationService
 
         $cacheKey = $this->buildCacheKey($boundingBox, $resolution, $from, $to, $category);
 
-        return Cache::remember(
+        $tags = $this->resolveCacheTags($resolution, $from, $to);
+
+        return $this->rememberWithTags(
             $cacheKey,
+            $tags,
             now()->addMinutes(self::CACHE_TTL_MINUTES),
             fn () => $this->runAggregateQuery($boundingBox, $resolution, $from, $to, $category)
         );
@@ -188,7 +201,7 @@ class H3AggregationService
     {
         $this->initialiseCacheVersion();
 
-        return (int) Cache::get(self::CACHE_VERSION_KEY, 1);
+        return (int) $this->cache->get(self::CACHE_VERSION_KEY, 1);
     }
 
     /**
@@ -198,14 +211,68 @@ class H3AggregationService
     {
         $this->initialiseCacheVersion();
 
-        $version = Cache::increment(self::CACHE_VERSION_KEY);
+        $version = $this->cache->increment(self::CACHE_VERSION_KEY);
 
         if (!is_int($version)) {
-            $version = (int) Cache::get(self::CACHE_VERSION_KEY, 1) + 1;
-            Cache::forever(self::CACHE_VERSION_KEY, $version);
+            $version = (int) $this->cache->get(self::CACHE_VERSION_KEY, 1) + 1;
+            $this->cache->forever(self::CACHE_VERSION_KEY, $version);
         }
 
         return $version;
+    }
+
+    /**
+     * Expose the current cache version for external callers that need to build compatible keys.
+     */
+    public function cacheVersion(): int
+    {
+        return $this->getCacheVersion();
+    }
+
+    /**
+     * Invalidate cached aggregates for the supplied records, using tag-based flushing when available.
+     *
+     * @param array<int, array<string, mixed>> $records
+     */
+    public function invalidateAggregatesForRecords(array $records): void
+    {
+        $this->bumpCacheVersion();
+
+        if (! $this->supportsTagging()) {
+            return;
+        }
+
+        $monthTags = $this->resolveMonthTagsFromRecords($records);
+
+        $tagsToFlush = $monthTags === []
+            ? [self::TAG_MONTH_ALL]
+            : $monthTags;
+
+        foreach (self::SUPPORTED_RESOLUTIONS as $resolution) {
+            $resolutionTag = $this->tagForResolution($resolution);
+
+            foreach ($tagsToFlush as $monthTag) {
+                $this->cache->tags([$resolutionTag, $monthTag])->flush();
+            }
+        }
+    }
+
+    /**
+     * Determine whether the underlying cache store supports tagging.
+     */
+    public function supportsTagging(): bool
+    {
+        return $this->supportsTaggingInternal();
+    }
+
+    /**
+     * Provide the tag set used for cached aggregates that match the given filters.
+     *
+     * @return list<string>
+     */
+    public function cacheTags(int $resolution, ?CarbonInterface $from, ?CarbonInterface $to): array
+    {
+        return $this->resolveCacheTags($resolution, $from, $to);
     }
 
     /**
@@ -213,9 +280,142 @@ class H3AggregationService
      */
     private function initialiseCacheVersion(): void
     {
-        if (! Cache::has(self::CACHE_VERSION_KEY)) {
-            Cache::forever(self::CACHE_VERSION_KEY, 1);
+        if (! $this->cache->has(self::CACHE_VERSION_KEY)) {
+            $this->cache->forever(self::CACHE_VERSION_KEY, 1);
         }
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $records
+     *
+     * @return list<string>
+     */
+    private function resolveMonthTagsFromRecords(array $records): array
+    {
+        $months = [];
+
+        foreach ($records as $record) {
+            $occurredAt = $record['occurred_at'] ?? null;
+
+            if (! is_string($occurredAt)) {
+                continue;
+            }
+
+            try {
+                $month = CarbonImmutable::parse($occurredAt)->startOfMonth()->format('Y-m');
+            } catch (\Throwable) {
+                continue;
+            }
+
+            $months[$month] = true;
+        }
+
+        if ($months === []) {
+            return [];
+        }
+
+        return array_map(fn (string $month): string => $this->tagForMonth($month), array_keys($months));
+    }
+
+    /**
+     * Build the cache key tags for the given filter parameters.
+     *
+     * @return list<string>
+     */
+    private function resolveCacheTags(int $resolution, ?CarbonInterface $from, ?CarbonInterface $to): array
+    {
+        $tags = [self::TAG_ALL, $this->tagForResolution($resolution)];
+
+        $monthTags = $this->resolveMonthTags($from, $to);
+
+        if ($monthTags === []) {
+            $monthTags = [self::TAG_MONTH_ALL];
+        }
+
+        return array_values(array_unique(array_merge($tags, $monthTags)));
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function resolveMonthTags(?CarbonInterface $from, ?CarbonInterface $to): array
+    {
+        $start = $this->normaliseMonth($from);
+        $end = $this->normaliseMonth($to);
+
+        if ($start === null && $end === null) {
+            return [];
+        }
+
+        if ($start === null) {
+            $start = $end;
+        }
+
+        if ($end === null) {
+            $end = $start;
+        }
+
+        if ($start === null || $end === null) {
+            return [];
+        }
+
+        if ($start->greaterThan($end)) {
+            [$start, $end] = [$end, $start];
+        }
+
+        $tags = [];
+        $cursor = $start;
+
+        while ($cursor->lessThanOrEqualTo($end)) {
+            $tags[] = $this->tagForMonth($cursor->format('Y-m'));
+            $cursor = $cursor->addMonth();
+        }
+
+        return $tags;
+    }
+
+    private function tagForResolution(int $resolution): string
+    {
+        return self::TAG_PREFIX . 'resolution:' . $resolution;
+    }
+
+    private function tagForMonth(string $month): string
+    {
+        return self::TAG_PREFIX . 'month:' . $month;
+    }
+
+    private function normaliseMonth(?CarbonInterface $value): ?CarbonImmutable
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        return $value instanceof CarbonImmutable
+            ? $value->startOfMonth()
+            : CarbonImmutable::instance($value)->startOfMonth();
+    }
+
+    /**
+     * @template TValue
+     *
+     * @param list<string> $tags
+     * @param Closure():TValue $callback
+     * @return TValue
+     */
+    private function rememberWithTags(string $cacheKey, array $tags, DateTimeInterface $ttl, Closure $callback)
+    {
+        if ($this->supportsTaggingInternal() && $tags !== []) {
+            return $this->cache->tags($tags)->remember($cacheKey, $ttl, $callback);
+        }
+
+        return $this->cache->remember($cacheKey, $ttl, $callback);
+    }
+
+    private function supportsTaggingInternal(): bool
+    {
+        $store = $this->cache->getStore();
+
+        return $store instanceof TaggableStore;
     }
 
     /**

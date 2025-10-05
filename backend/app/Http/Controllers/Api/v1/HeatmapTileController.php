@@ -34,60 +34,74 @@ class HeatmapTileController extends BaseController
         $resolution = $this->resolutionForZoom($zoom);
         $boundingBox = $this->tileBoundingBox($tileX, $tileY, $zoom);
 
-        $cacheKey = $this->buildCacheKey($zoom, $tileX, $tileY, $resolution, $from, $to, $horizon);
-
-        $payload = Cache::remember(
-            $cacheKey,
-            now()->addMinutes(self::CACHE_TTL_MINUTES),
-            function () use ($aggregationService, $geometryService, $boundingBox, $resolution, $from, $to, $horizon) {
-                $aggregates = $aggregationService->aggregateByBoundingBox($boundingBox, $resolution, $from, $to, null);
-
-                $cells = [];
-                $maxCount = 0;
-
-                foreach ($aggregates as $aggregate) {
-                    $polygon = $geometryService->polygonCoordinates($aggregate->h3Index);
-                    $centroid = $this->polygonCentroid($polygon);
-
-                    $cells[] = [
-                        'h3' => $aggregate->h3Index,
-                        'count' => $aggregate->count,
-                        'categories' => $aggregate->categories,
-                        'centroid' => [
-                            'lat' => round($centroid[1], 6),
-                            'lng' => round($centroid[0], 6),
-                        ],
-                        'polygon' => array_map(
-                            static fn (array $vertex): array => [
-                                'lng' => round($vertex[0], 6),
-                                'lat' => round($vertex[1], 6),
-                            ],
-                            $polygon
-                        ),
-                    ];
-
-                    $maxCount = max($maxCount, $aggregate->count);
-                }
-
-                return [
-                    'meta' => [
-                        'bounds' => [
-                            'west' => $boundingBox[0],
-                            'south' => $boundingBox[1],
-                            'east' => $boundingBox[2],
-                            'north' => $boundingBox[3],
-                        ],
-                        'max_count' => $maxCount,
-                        'timeframe' => [
-                            'from' => $from?->toIso8601String(),
-                            'to' => $to?->toIso8601String(),
-                        ],
-                        'horizon_hours' => $horizon,
-                    ],
-                    'cells' => $cells,
-                ];
-            }
+        $cacheTags = $aggregationService->cacheTags($resolution, $from, $to);
+        $cacheKey = $this->buildCacheKey(
+            $zoom,
+            $tileX,
+            $tileY,
+            $resolution,
+            $from,
+            $to,
+            $horizon,
+            $aggregationService->cacheVersion()
         );
+
+        $callback = function () use ($aggregationService, $geometryService, $boundingBox, $resolution, $from, $to, $horizon) {
+            $aggregates = $aggregationService->aggregateByBoundingBox($boundingBox, $resolution, $from, $to, null);
+
+            $cells = [];
+            $maxCount = 0;
+
+            foreach ($aggregates as $aggregate) {
+                $polygon = $geometryService->polygonCoordinates($aggregate->h3Index);
+                $centroid = $this->polygonCentroid($polygon);
+
+                $cells[] = [
+                    'h3' => $aggregate->h3Index,
+                    'count' => $aggregate->count,
+                    'categories' => $aggregate->categories,
+                    'centroid' => [
+                        'lat' => round($centroid[1], 6),
+                        'lng' => round($centroid[0], 6),
+                    ],
+                    'polygon' => array_map(
+                        static fn (array $vertex): array => [
+                            'lng' => round($vertex[0], 6),
+                            'lat' => round($vertex[1], 6),
+                        ],
+                        $polygon
+                    ),
+                ];
+
+                $maxCount = max($maxCount, $aggregate->count);
+            }
+
+            return [
+                'meta' => [
+                    'bounds' => [
+                        'west' => $boundingBox[0],
+                        'south' => $boundingBox[1],
+                        'east' => $boundingBox[2],
+                        'north' => $boundingBox[3],
+                    ],
+                    'max_count' => $maxCount,
+                    'timeframe' => [
+                        'from' => $from?->toIso8601String(),
+                        'to' => $to?->toIso8601String(),
+                    ],
+                    'horizon_hours' => $horizon,
+                ],
+                'cells' => $cells,
+            ];
+        };
+
+        $ttl = now()->addMinutes(self::CACHE_TTL_MINUTES);
+
+        if ($aggregationService->supportsTagging() && $cacheTags !== []) {
+            $payload = Cache::tags($cacheTags)->remember($cacheKey, $ttl, $callback);
+        } else {
+            $payload = Cache::remember($cacheKey, $ttl, $callback);
+        }
 
         return $this->successResponse([
             'z' => $zoom,
@@ -212,6 +226,7 @@ class HeatmapTileController extends BaseController
         ?CarbonImmutable $from,
         ?CarbonImmutable $to,
         ?int $horizon,
+        int $version,
     ): string {
         $fromKey = $from?->toIso8601String() ?? 'null';
         $toKey = $to?->toIso8601String() ?? 'null';
@@ -226,8 +241,6 @@ class HeatmapTileController extends BaseController
             $toKey,
             $horizonKey,
         ]);
-
-        $version = Cache::get(H3AggregationService::CACHE_VERSION_KEY, 1);
 
         return sprintf('%s%d:%s', self::CACHE_PREFIX, $version, md5($rawKey));
     }
