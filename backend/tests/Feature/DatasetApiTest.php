@@ -2,10 +2,10 @@
 
 namespace Tests\Feature;
 
-use App\Enums\CrimeIngestionStatus;
+use App\Enums\DatasetRecordIngestionStatus;
 use App\Enums\DatasetStatus;
 use App\Enums\Role;
-use App\Models\CrimeIngestionRun;
+use App\Models\DatasetRecordIngestionRun;
 use App\Jobs\CompleteDatasetIngestion;
 use App\Jobs\IngestRemoteDataset;
 use App\Models\Dataset;
@@ -255,7 +255,7 @@ CSV;
         Storage::fake('local');
 
         $csv = "Type,Date\nEntry,2024-04-01T00:00:00+00:00\n";
-        $file = UploadedFile::fake()->createWithContent('crime-data-export.csv', $csv, 'text/csv');
+        $file = UploadedFile::fake()->createWithContent('dataset-data-export.csv', $csv, 'text/csv');
         $tokens = $this->issueTokensForRole(Role::Admin);
 
         $response = $this->withHeader('Authorization', 'Bearer '.$tokens['accessToken'])->postJson('/api/v1/datasets/ingest', [
@@ -265,7 +265,7 @@ CSV;
 
         $response->assertCreated();
         $response->assertJsonPath('success', true);
-        $response->assertJsonPath('data.name', 'crime-data-export');
+        $response->assertJsonPath('data.name', 'dataset-data-export');
         $response->assertJsonPath('data.source_type', 'file');
     }
 
@@ -345,25 +345,25 @@ CSV;
     {
         $tokens = $this->issueTokensForRole(Role::Admin);
 
-        CrimeIngestionRun::factory()->create([
+        DatasetRecordIngestionRun::factory()->create([
             'id' => 1,
-            'status' => CrimeIngestionStatus::Completed,
+            'status' => DatasetRecordIngestionStatus::Completed,
             'dry_run' => false,
             'started_at' => now(),
             'records_expected' => 200,
         ]);
 
-        CrimeIngestionRun::factory()->create([
+        DatasetRecordIngestionRun::factory()->create([
             'id' => 2,
-            'status' => CrimeIngestionStatus::Completed,
+            'status' => DatasetRecordIngestionStatus::Completed,
             'dry_run' => true,
             'started_at' => now()->subDay(),
             'records_expected' => 150,
         ]);
 
-        CrimeIngestionRun::factory()->create([
+        DatasetRecordIngestionRun::factory()->create([
             'id' => 3,
-            'status' => CrimeIngestionStatus::Failed,
+            'status' => DatasetRecordIngestionStatus::Failed,
             'dry_run' => false,
             'started_at' => now()->subDays(2),
         ]);

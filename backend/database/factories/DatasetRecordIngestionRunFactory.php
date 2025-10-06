@@ -2,17 +2,17 @@
 
 namespace Database\Factories;
 
-use App\Enums\CrimeIngestionStatus;
-use App\Models\CrimeIngestionRun;
+use App\Enums\DatasetRecordIngestionStatus;
+use App\Models\DatasetRecordIngestionRun;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Carbon;
 
 /**
- * @extends Factory<CrimeIngestionRun>
+ * @extends Factory<DatasetRecordIngestionRun>
  */
-class CrimeIngestionRunFactory extends Factory
+class DatasetRecordIngestionRunFactory extends Factory
 {
-    protected $model = CrimeIngestionRun::class;
+    protected $model = DatasetRecordIngestionRun::class;
 
     public function definition(): array
     {
@@ -22,8 +22,8 @@ class CrimeIngestionRunFactory extends Factory
             'month' => $startedAt->format('Y-m'),
             'dry_run' => $this->faker->boolean(),
             'status' => $this->faker->randomElement(array_map(
-                static fn (CrimeIngestionStatus $status): string => $status->value,
-                CrimeIngestionStatus::cases()
+                static fn (DatasetRecordIngestionStatus $status): string => $status->value,
+                DatasetRecordIngestionStatus::cases()
             )),
             'records_detected' => $this->faker->numberBetween(0, 5_000),
             'records_expected' => $this->faker->numberBetween(0, 5_000),

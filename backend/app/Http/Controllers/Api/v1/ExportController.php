@@ -14,7 +14,7 @@ use JsonException;
 class ExportController extends Controller
 {
     /**
-     * Export aggregated crime data within a bounding box to CSV or GeoJSON format.
+     * Export aggregated dataset records within a bounding box to CSV or GeoJSON format.
      *
      * @param ExportRequest $request
      * @param H3AggregationService $aggregationService
@@ -30,14 +30,30 @@ class ExportController extends Controller
         H3GeometryService    $geometryService
     ): Response|JsonResponse
     {
-        $bbox = $request->string('bbox') ?? '-180,-90,180,90';
-        $resolution = (int)($request->integer('resolution') ?? 7);
-        $from = $request->input('from');
-        $to = $request->input('to');
-        $crimeType = $request->input('crime_type');
-        $format = strtolower((string)($request->string('format') ?? $request->string('type') ?? 'csv'));
+        $validated = $request->validated();
 
-        $aggregated = $aggregationService->aggregateByBbox($bbox, $resolution, $from, $to, $crimeType);
+        $bbox = (string) ($validated['bbox'] ?? '-180,-90,180,90');
+        $resolution = (int) ($validated['resolution'] ?? 7);
+        $from = $validated['from'] ?? null;
+        $to = $validated['to'] ?? null;
+        $datasetType = $validated['dataset_type'] ?? null;
+        $severity = $validated['severity'] ?? null;
+        $timeOfDayStart = $validated['time_of_day_start'] ?? null;
+        $timeOfDayEnd = $validated['time_of_day_end'] ?? null;
+        $confidenceLevel = $validated['confidence_level'] ?? null;
+        $format = strtolower((string) ($validated['format'] ?? $validated['type'] ?? 'csv'));
+
+        $aggregated = $aggregationService->aggregateByBbox(
+            $bbox,
+            $resolution,
+            $from,
+            $to,
+            $datasetType,
+            $timeOfDayStart,
+            $timeOfDayEnd,
+            $severity,
+            $confidenceLevel,
+        );
 
         if ($format === 'geojson' || str_contains($request->header('accept', ''), 'geo+json')) {
             return $this->exportGeoJson($aggregated, $geometryService, $resolution);
@@ -58,14 +74,35 @@ class ExportController extends Controller
     private function exportCsv(array $data, int $resolution): Response
     {
         $handle = fopen('php://temp', 'r+');
-        fputcsv($handle, ['h3', 'resolution', 'count', 'categories']);
+        fputcsv(
+            $handle,
+            [
+                'h3',
+                'resolution',
+                'count',
+                'categories',
+                'mean_risk_score',
+                'confidence_level',
+                'confidence_interval_lower',
+                'confidence_interval_upper',
+                'risk_sample_size',
+            ]
+        );
 
         foreach ($data as $h3 => $payload) {
+            $statistics = $payload['statistics'] ?? [];
+            $confidence = $statistics['confidence_interval'] ?? null;
+
             fputcsv($handle, [
                 $h3,
                 $resolution,
                 $payload['count'],
                 json_encode($payload['categories'], JSON_THROW_ON_ERROR),
+                $statistics['mean_risk_score'] ?? null,
+                $statistics['confidence_level'] ?? null,
+                $confidence['lower'] ?? null,
+                $confidence['upper'] ?? null,
+                $statistics['sample_size'] ?? null,
             ]);
         }
 
@@ -75,7 +112,7 @@ class ExportController extends Controller
 
         return ResponseFacade::make($csv, 200, [
             'Content-Type' => 'text/csv',
-            'Content-Disposition' => 'attachment; filename="crime-export.csv"',
+            'Content-Disposition' => 'attachment; filename="dataset-record-export.csv"',
         ]);
     }
 
@@ -99,6 +136,7 @@ class ExportController extends Controller
                     'resolution' => $resolution,
                     'count' => $payload['count'],
                     'categories' => $payload['categories'],
+                    'statistics' => $payload['statistics'],
                 ],
                 'geometry' => [
                     'type' => 'Polygon',
@@ -114,7 +152,7 @@ class ExportController extends Controller
             'features' => $features,
         ], 200, [
             'Content-Type' => 'application/geo+json',
-            'Content-Disposition' => 'attachment; filename="crime-export.geojson"',
+            'Content-Disposition' => 'attachment; filename="dataset-record-export.geojson"',
         ], JSON_UNESCAPED_SLASHES);
     }
 }

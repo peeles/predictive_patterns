@@ -2,7 +2,7 @@
 
 namespace App\Notifications;
 
-use App\Models\CrimeIngestionRun;
+use App\Models\DatasetRecordIngestionRun;
 use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Messages\SlackAttachment;
@@ -10,14 +10,14 @@ use Illuminate\Notifications\Messages\SlackMessage;
 use Illuminate\Notifications\Notification;
 use Throwable;
 
-class CrimeIngestionFailed extends Notification
+class DatasetRecordIngestionFailed extends Notification
 {
     use Queueable;
 
     /**
      * @param array<int, string> $channels
      */
-    public function __construct(private readonly CrimeIngestionRun $run, private readonly Throwable $exception, private readonly array $channels = ['mail'])
+    public function __construct(private readonly DatasetRecordIngestionRun $run, private readonly Throwable $exception, private readonly array $channels = ['mail'])
     {
     }
 
@@ -32,8 +32,8 @@ class CrimeIngestionFailed extends Notification
     public function toMail(mixed $notifiable): MailMessage
     {
         return (new MailMessage())
-            ->subject(sprintf('Crime ingestion failed for %s', $this->run->month))
-            ->line('The police crime ingestion process failed.')
+            ->subject(sprintf('Dataset record ingestion failed for %s', $this->run->month))
+            ->line('The dataset record ingestion process failed.')
             ->line(sprintf('Run ID: %d', $this->run->id))
             ->line(sprintf('Month: %s', $this->run->month))
             ->line(sprintf('Dry run: %s', $this->run->dry_run ? 'yes' : 'no'))
@@ -45,7 +45,7 @@ class CrimeIngestionFailed extends Notification
     {
         return (new SlackMessage())
             ->error()
-            ->content(sprintf('Crime ingestion failed for %s', $this->run->month))
+            ->content(sprintf('Dataset record ingestion failed for %s', $this->run->month))
             ->attachment(function (SlackAttachment $attachment): void {
                 $attachment
                     ->title('Ingestion failure details')

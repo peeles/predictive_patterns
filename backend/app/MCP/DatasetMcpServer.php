@@ -2,15 +2,15 @@
 
 namespace App\MCP;
 
-use App\Jobs\IngestPoliceCrimes;
-use App\Models\Crime;
+use App\Jobs\IngestDatasetRecords;
+use App\Models\DatasetRecord;
 use App\Services\H3AggregationService;
 use Carbon\Carbon;
 use Carbon\CarbonImmutable;
 use InvalidArgumentException;
 use Throwable;
 
-class CrimeMcpServer {
+class DatasetMcpServer {
     public function run(): void {
         while (($line = fgets(STDIN)) !== false) {
             $resp = $this->dispatch($line);
@@ -30,7 +30,7 @@ class CrimeMcpServer {
                 'id' => $id,
                 'result' => match ($tool) {
                     'aggregate_hexes' => $this->aggregate($args),
-                    'ingest_crime_data' => $this->ingest($args),
+                    'ingest_dataset_data' => $this->ingest($args),
                     'export_geojson' => $this->export($args),
                     'get_categories' => $this->categories(),
                     'list_ingested_months' => $this->ingestedMonths(),
@@ -49,11 +49,26 @@ class CrimeMcpServer {
         $from = $a['from'] ?? null;
         $to   = $a['to'] ?? null;
         $svc  = app(H3AggregationService::class);
-        $agg  = $svc->aggregateByBbox($bbox, $res, $from, $to, $a['crime_type'] ?? null);
+        $agg  = $svc->aggregateByBbox(
+            $bbox,
+            $res,
+            $from,
+            $to,
+            $a['dataset_type'] ?? null,
+            $a['time_of_day_start'] ?? null,
+            $a['time_of_day_end'] ?? null,
+            $a['severity'] ?? null,
+            $a['confidence_level'] ?? null,
+        );
 
         $cells = [];
         foreach ($agg as $h3 => $data) {
-            $cells[] = ['h3'=>$h3,'count'=>$data['count'],'categories'=>$data['categories']];
+            $cells[] = [
+                'h3' => $h3,
+                'count' => $data['count'],
+                'categories' => $data['categories'],
+                'statistics' => $data['statistics'] ?? [],
+            ];
         }
         return ['resolution'=>$res,'cells'=>$cells];
     }
@@ -95,7 +110,7 @@ class CrimeMcpServer {
         sort($months);
 
         foreach ($months as $month) {
-            dispatch(new IngestPoliceCrimes($month, $dryRun));
+            dispatch(new IngestDatasetRecords($month, $dryRun));
         }
 
         return ['status' => 'queued', 'months' => $months, 'dry_run' => $dryRun];
@@ -136,16 +151,34 @@ class CrimeMcpServer {
     private function export(array $a): array {
         $res = (int)($a['resolution'] ?? 7);
         $bbox= $a['bbox'] ?? throw new InvalidArgumentException('bbox required');
-        $agg = app(H3AggregationService::class)->aggregateByBbox($bbox, $res, $a['from'] ?? null, $a['to'] ?? null, $a['crime_type'] ?? null);
+        $agg = app(H3AggregationService::class)->aggregateByBbox(
+            $bbox,
+            $res,
+            $a['from'] ?? null,
+            $a['to'] ?? null,
+            $a['dataset_type'] ?? null,
+            $a['time_of_day_start'] ?? null,
+            $a['time_of_day_end'] ?? null,
+            $a['severity'] ?? null,
+            $a['confidence_level'] ?? null,
+        );
         $features = [];
         foreach ($agg as $h3 => $data) {
-            $features[] = ['type'=>'Feature','properties'=>['h3'=>$h3,'count'=>$data['count']],'geometry'=>null];
+            $features[] = [
+                'type' => 'Feature',
+                'properties' => [
+                    'h3' => $h3,
+                    'count' => $data['count'],
+                    'statistics' => $data['statistics'] ?? [],
+                ],
+                'geometry' => null,
+            ];
         }
         return ['type'=>'FeatureCollection','features'=>$features];
     }
 
     private function categories(): array {
-        $categories = Crime::query()
+        $categories = DatasetRecord::query()
             ->select('category')
             ->distinct()
             ->whereNotNull('category')
@@ -159,7 +192,7 @@ class CrimeMcpServer {
     }
 
     private function ingestedMonths(): array {
-        $rows = Crime::query()
+        $rows = DatasetRecord::query()
             ->selectRaw("DATE_FORMAT(occurred_at, '%Y-%m') as ym, COUNT(*) as c")
             ->groupBy('ym')
             ->orderBy('ym', 'desc')
@@ -176,12 +209,27 @@ class CrimeMcpServer {
         $limit = max(1, (int)($args['limit'] ?? 5));
         $from = $args['from'] ?? null;
         $to = $args['to'] ?? null;
-        $crimeType = $args['crime_type'] ?? null;
+        $datasetType = $args['dataset_type'] ?? null;
 
-        $agg = app(H3AggregationService::class)->aggregateByBbox($bbox, $resolution, $from, $to, $crimeType);
+        $agg = app(H3AggregationService::class)->aggregateByBbox(
+            $bbox,
+            $resolution,
+            $from,
+            $to,
+            $datasetType,
+            $args['time_of_day_start'] ?? null,
+            $args['time_of_day_end'] ?? null,
+            $args['severity'] ?? null,
+            $args['confidence_level'] ?? null,
+        );
         $cells = [];
         foreach ($agg as $h3 => $payload) {
-            $cells[] = ['h3' => $h3, 'count' => $payload['count'], 'categories' => $payload['categories']];
+            $cells[] = [
+                'h3' => $h3,
+                'count' => $payload['count'],
+                'categories' => $payload['categories'],
+                'statistics' => $payload['statistics'] ?? [],
+            ];
         }
 
         usort($cells, static fn($a, $b) => $b['count'] <=> $a['count']);
@@ -194,7 +242,7 @@ class CrimeMcpServer {
                 'bbox' => $bbox,
                 'from' => $from,
                 'to' => $to,
-                'crime_type' => $crimeType,
+                'dataset_type' => $datasetType,
             ]),
             'cells' => $cells,
         ];
