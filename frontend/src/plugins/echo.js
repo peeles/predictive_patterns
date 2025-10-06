@@ -1,10 +1,44 @@
 import Echo from 'laravel-echo'
 import Pusher from 'pusher-js'
 
-const pusherHost = import.meta.env.VITE_PUSHER_HOST
-const pusherPort = import.meta.env.VITE_PUSHER_PORT
-const pusherScheme = import.meta.env.VITE_PUSHER_SCHEME ?? 'http'
-const pusherCluster = import.meta.env.VITE_PUSHER_APP_CLUSTER ?? 'mt1'
+const normalizeEnv = (value) => {
+  if (typeof value !== 'string') {
+    return value
+  }
+
+  const normalized = value.trim()
+  if (!normalized || normalized.toLowerCase() === 'null' || normalized.toLowerCase() === 'undefined') {
+    return undefined
+  }
+
+  return normalized
+}
+
+const pusherHost = normalizeEnv(import.meta.env.VITE_PUSHER_HOST)
+const pusherPort = normalizeEnv(import.meta.env.VITE_PUSHER_PORT)
+const pusherScheme = normalizeEnv(import.meta.env.VITE_PUSHER_SCHEME) ?? 'http'
+const pusherCluster = normalizeEnv(import.meta.env.VITE_PUSHER_APP_CLUSTER) ?? 'mt1'
+const apiBaseUrl = normalizeEnv(import.meta.env.VITE_API_URL)
+const explicitAuthEndpoint = normalizeEnv(import.meta.env.VITE_PUSHER_AUTH_ENDPOINT)
+
+const resolveAuthEndpoint = () => {
+  if (explicitAuthEndpoint) {
+    return explicitAuthEndpoint
+  }
+
+  if (!apiBaseUrl) {
+    return '/broadcasting/auth'
+  }
+
+  const originFallback = typeof window !== 'undefined' && window.location ? window.location.origin : 'http://localhost'
+
+  try {
+    const url = new URL(apiBaseUrl, originFallback)
+    return `${url.origin}/broadcasting/auth`
+  } catch {
+    return '/broadcasting/auth'
+  }
+}
 
 const echoOptions = {
   broadcaster: 'pusher',
@@ -12,7 +46,7 @@ const echoOptions = {
   forceTLS: pusherScheme === 'https',
   enabledTransports: ['ws', 'wss'],
   disableStats: true,
-  authEndpoint: '/broadcasting/auth',
+  authEndpoint: resolveAuthEndpoint(),
   withCredentials: true,
 }
 
@@ -21,9 +55,9 @@ if (pusherHost) {
   echoOptions.wsHost = pusherHost
   echoOptions.wsPort = resolvedPort
   echoOptions.wssPort = resolvedPort
-} else if (pusherCluster) {
-  echoOptions.cluster = pusherCluster
 }
+
+echoOptions.cluster = pusherCluster
 
 window.Pusher = Pusher
 
