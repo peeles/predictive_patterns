@@ -8,6 +8,7 @@ use App\Support\DatasetRowBuffer;
 use App\Support\DatasetRowPreprocessor;
 use App\Support\Metrics\ClassificationReportGenerator;
 use App\Support\Phpml\ImputerFactory;
+use App\Support\ProbabilityScoreExtractor;
 use Illuminate\Support\Facades\Storage;
 use Phpml\Exception\FileException;
 use Phpml\Exception\InvalidOperationException;
@@ -286,9 +287,10 @@ class ModelEvaluationService
         $normalizer->transform($standardized);
 
         $predictions = $classifier->predict($standardized);
-        $probabilities = method_exists($classifier, 'predictProbabilities')
-            ? $classifier->predictProbabilities($standardized)
+        $rawProbabilities = method_exists($classifier, 'predictProbabilities')
+            ? (array) $classifier->predictProbabilities($standardized)
             : array_map(static fn (int $value): float => $value >= 1 ? 1.0 : 0.0, $predictions);
+        $probabilities = ProbabilityScoreExtractor::extractList($rawProbabilities);
 
         $classification = ClassificationReportGenerator::generate($labels, $predictions);
         $report = $classification['report'];

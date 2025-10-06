@@ -10,6 +10,7 @@ use App\Support\DatasetRowPreprocessor;
 use App\Support\FeatureBuffer;
 use App\Support\Metrics\ClassificationReportGenerator;
 use App\Support\Phpml\ImputerFactory;
+use App\Support\ProbabilityScoreExtractor;
 use ArgumentCountError;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Storage;
@@ -160,9 +161,10 @@ class ModelTrainingService
         $this->notifyProgress($progressCallback, 75.0, 'Evaluating validation dataset');
 
         $predicted = $classifier->predict($validationSamples);
-        $probabilities = method_exists($classifier, 'predictProbabilities')
-            ? $classifier->predictProbabilities($validationSamples)
+        $rawProbabilities = method_exists($classifier, 'predictProbabilities')
+            ? (array) $classifier->predictProbabilities($validationSamples)
             : array_map(static fn (int $value): float => $value >= 1 ? 1.0 : 0.0, $predicted);
+        $probabilities = ProbabilityScoreExtractor::extractList($rawProbabilities);
 
         $classification = ClassificationReportGenerator::generate($validationLabels, $predicted);
         $report = $classification['report'];
