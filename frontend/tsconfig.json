@@ -4,6 +4,7 @@
     "checkJs": false,
     "resolveJsonModule": true,
     "moduleResolution": "bundler",
+    "module": "esnext",
     "types": [
       "vitest",
       "vite/client",
