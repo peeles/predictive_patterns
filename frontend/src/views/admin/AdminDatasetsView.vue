@@ -7,8 +7,7 @@
         >
             <template #actions>
                 <button
-                    class="inline-flex items-center justify-center rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold
-                text-white shadow-sm transition hover:bg-blue-700 cursor-pointer disabled:cursor-not-allowed disabled:bg-stone-400"
+                    class="inline-flex items-center justify-center rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 cursor-pointer focus-visible:outline focus-visible:outline-offset-2 focus-visible:outline-blue-500 disabled:cursor-not-allowed disabled:bg-stone-400"
                     type="button"
                     @click="openWizard"
                 >
@@ -28,7 +27,7 @@
                         <span class="hidden sm:inline">Status</span>
                         <select
                             v-model="datasetStatusFilter"
-                            class="rounded-md border border-stone-300 bg-white px-3 py-1.5 text-sm text-stone-700 shadow-sm transition focus-visible:outline  focus-visible:outline-offset-2 focus-visible:outline-blue-500"
+                            class="rounded-md border border-stone-300 bg-white px-3 py-1.5 text-sm text-stone-700 shadow-sm transition focus-visible:outline focus-visible:outline-offset-2 focus-visible:outline-blue-500"
                         >
                             <option v-for="option in datasetStatusOptions" :key="option.value" :value="option.value">
                                 {{ option.label }}
@@ -38,7 +37,7 @@
                     <span class="hidden sm:inline">Last refreshed:</span>
                     <span class="font-medium text-stone-900">{{ datasetsLastRefreshedLabel }}</span>
                     <button
-                        class="inline-flex items-center rounded-md border border-stone-300 px-3 py-1.5 font-medium text-stone-700 shadow-sm transition hover:bg-stone-50 focus-visible:outline  focus-visible:outline-offset-2 focus-visible:outline-blue-500"
+                        class="inline-flex items-center rounded-md border border-stone-300 px-3 py-1.5 font-medium text-stone-700 shadow-sm transition hover:bg-stone-50 focus-visible:outline focus-visible:outline-offset-2 focus-visible:outline-blue-500"
                         type="button"
                         :disabled="datasetsLoading"
                         @click="refreshDatasets"
@@ -95,7 +94,7 @@
                                 <div class="flex flex-wrap items-center gap-2 text-xs text-stone-500">
                                     <span class="font-mono break-all">{{ dataset.id }}</span>
                                     <button
-                                        class="inline-flex items-center gap-1 rounded-full border border-stone-300 px-2 py-0.5 text-[11px] font-medium text-stone-600 transition hover:bg-stone-100 focus-visible:outline  focus-visible:outline-offset-2 focus-visible:outline-blue-500"
+                                        class="inline-flex items-center gap-1 rounded-full border border-stone-300 px-2 py-0.5 text-[11px] font-medium text-stone-600 transition hover:bg-stone-100 focus-visible:outline focus-visible:outline-offset-2 focus-visible:outline-blue-500"
                                         type="button"
                                         @click="copyDatasetId(dataset)"
                                     >
@@ -127,7 +126,7 @@
                                     v-else-if="dataset.status === 'processing' || dataset.status === 'pending'"
                                     class="flex items-center gap-2 text-xs text-stone-500"
                                 >
-                                    <svg aria-hidden="true" class="h-4 w-4 animate-spin"  viewBox="0 0 24 24">
+                                    <svg aria-hidden="true" class="h-4 w-4 animate-spin" viewBox="0 0 24 24">
                                         <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                                         <path class="opacity-75" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" fill="currentColor"></path>
                                     </svg>
@@ -172,7 +171,7 @@
                         <span class="hidden sm:inline">Status</span>
                         <select
                             v-model="statusFilter"
-                            class="rounded-md border border-stone-300 bg-white px-3 py-1.5 text-sm text-stone-700 shadow-sm transition focus-visible:outline  focus-visible:outline-offset-2 focus-visible:outline-blue-500"
+                            class="rounded-md border border-stone-300 bg-white px-3 py-1.5 text-sm text-stone-700 shadow-sm transition focus-visible:outline focus-visible:outline-offset-2 focus-visible:outline-blue-500"
                         >
                             <option v-for="option in statusOptions" :key="option.value" :value="option.value">
                                 {{ option.label }}
@@ -182,7 +181,7 @@
                     <span class="hidden sm:inline">Last refreshed:</span>
                     <span class="font-medium text-stone-900">{{ lastRefreshedLabel }}</span>
                     <button
-                        class="inline-flex items-center rounded-md border border-stone-300 px-3 py-1.5 font-medium text-stone-700 shadow-sm transition hover:bg-stone-50 focus-visible:outline  focus-visible:outline-offset-2 focus-visible:outline-blue-500"
+                        class="inline-flex items-center rounded-md border border-stone-300 px-3 py-1.5 font-medium text-stone-700 shadow-sm transition hover:bg-stone-50 focus-visible:outline focus-visible:outline-offset-2 focus-visible:outline-blue-500"
                         type="button"
                         :disabled="loading"
                         @click="refresh"
@@ -241,7 +240,7 @@
                         <td class="px-6 py-3 text-stone-700">{{ formatDateTime(run.finished_at) }}</td>
                         <td class="px-6 py-3 text-right">
                             <button
-                                class="inline-flex items-center rounded-md border border-stone-300 px-3 py-1.5 text-xs font-medium text-stone-700 shadow-sm transition hover:bg-stone-50 focus-visible:outline  focus-visible:outline-offset-2 focus-visible:outline-blue-500"
+                                class="inline-flex items-center rounded-md border border-stone-300 px-3 py-1.5 text-xs font-medium text-stone-700 shadow-sm transition hover:bg-stone-50 focus-visible:outline focus-visible:outline-offset-2 focus-visible:outline-blue-500"
                                 type="button"
                                 @click="openRunDetails(run)"
                             >
@@ -287,7 +286,7 @@
                         <p class="text-sm text-stone-600">Month {{ selectedRun.month }} • Run #{{ selectedRun.id }}</p>
                     </div>
                     <button
-                        class="inline-flex items-center rounded-md border border-stone-300 px-2 py-1 text-sm font-medium text-stone-700 shadow-sm transition hover:bg-stone-50 focus-visible:outline  focus-visible:outline-offset-2 focus-visible:outline-blue-500"
+                        class="inline-flex items-center rounded-md border border-stone-300 px-2 py-1 text-sm font-medium text-stone-700 shadow-sm transition hover:bg-stone-50 focus-visible:outline focus-visible:outline-offset-2 focus-visible:outline-blue-500"
                         type="button"
                         @click="closeRunDetails"
                     >
