@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import apiClient from '../services/apiClient'
+import { getBroadcastClient } from '../services/broadcast'
 import { notifyError, notifyInfo, notifySuccess } from '../utils/notifications'
 import { useModelStore } from './model'
 import { useRequestStore } from './request'
@@ -16,6 +17,22 @@ const POLL_TIMEOUT_MS = 2 * 60 * 1000
 const DEFAULT_HISTORY_PAGE_SIZE = 10
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
+const normalisePercent = (value) => {
+    if (!Number.isFinite(value)) {
+        return null
+    }
+
+    return Math.min(100, Math.max(0, Math.round(value)))
+}
+
+const progressRatioToPercent = (value) => {
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+        return null
+    }
+
+    return normalisePercent(value * 100)
+}
 
 const coerceNumber = (value, fallback = null) => {
     if (value === null || typeof value === 'undefined') {
@@ -246,6 +263,31 @@ const normalizePredictionResponse = (prediction = {}, fallbackFilters = {}) => {
         filters.timestamp ??
         new Date().toISOString()
 
+    const progressPercent = (() => {
+        const rawProgress = coerceNumber(prediction.progress, null)
+        if (Number.isFinite(rawProgress)) {
+            return normalisePercent(rawProgress)
+        }
+        return null
+    })()
+
+    const progressMessage = (() => {
+        const explicit = prediction.progress_message ?? prediction.status_message ?? null
+        if (typeof explicit === 'string' && explicit.trim().length) {
+            return explicit
+        }
+
+        if (status === 'queued') {
+            return 'Prediction queued. Waiting for worker availability.'
+        }
+
+        if (status === 'running') {
+            return 'Generating forecast using the latest model snapshot.'
+        }
+
+        return null
+    })()
+
     return {
         id: prediction.id ?? generateId(),
         status,
@@ -263,6 +305,8 @@ const normalizePredictionResponse = (prediction = {}, fallbackFilters = {}) => {
         heatmap,
         outputs,
         model: modelInfo,
+        progress: progressPercent,
+        progressMessage,
     }
 }
 
@@ -317,6 +361,12 @@ export const usePredictionStore = defineStore('prediction', {
         historyError: null,
         historyHydrated: false,
         pollAbortController: null,
+        realtimeStatus: null,
+        realtimeSubscription: null,
+        realtimePredictionId: null,
+        realtimeFilters: null,
+        realtimeAwaiter: null,
+        realtimeCompletionNotified: false,
     }),
     getters: {
         hasPrediction: (state) => Boolean(state.currentPrediction),
@@ -330,6 +380,258 @@ export const usePredictionStore = defineStore('prediction', {
                 this.pollAbortController.abort()
                 this.pollAbortController = null
             }
+
+            this.abortRealtimeAwaiter('REALTIME_ABORTED')
+            this.stopRealtimeTracking()
+        },
+        settleRealtimeAwaiter(handler) {
+            const awaiter = this.realtimeAwaiter
+            if (!awaiter || awaiter.settled) {
+                return
+            }
+
+            awaiter.settled = true
+
+            try {
+                handler(awaiter)
+            } catch (error) {
+                awaiter.reject?.(error)
+            } finally {
+                this.realtimeAwaiter = null
+            }
+        },
+        abortRealtimeAwaiter(code = 'REALTIME_ABORTED', cause = null) {
+            const awaiter = this.realtimeAwaiter
+            if (!awaiter || awaiter.settled) {
+                return
+            }
+
+            const error = new Error('Realtime tracking aborted')
+            error.code = code
+            if (cause) {
+                error.cause = cause
+            }
+
+            awaiter.settled = true
+            awaiter.reject?.(error)
+            this.realtimeAwaiter = null
+        },
+        stopRealtimeTracking() {
+            const subscription = this.realtimeSubscription
+            if (subscription) {
+                const broadcast = getBroadcastClient()
+                if (broadcast) {
+                    const channelName = subscription?.channelName ?? `predictions.${this.realtimePredictionId}.status`
+                    try {
+                        broadcast.unsubscribe(channelName)
+                    } catch (error) {
+                        console.warn('Error unsubscribing from prediction status channel', error)
+                    }
+                }
+            }
+
+            this.realtimeSubscription = null
+            this.realtimePredictionId = null
+            this.realtimeFilters = null
+            this.realtimeStatus = null
+        },
+        startRealtimeTracking(predictionId, filters = {}, options = {}) {
+            const awaitCompletion = Boolean(options?.awaitCompletion)
+
+            if (!predictionId) {
+                return null
+            }
+
+            const broadcast = getBroadcastClient()
+            if (!broadcast) {
+                return null
+            }
+
+            this.stopRealtimeTracking()
+            this.abortRealtimeAwaiter('REALTIME_REPLACED')
+
+            const channelName = `predictions.${predictionId}.status`
+            let subscription
+
+            try {
+                subscription = broadcast.subscribe(channelName, {
+                    onEvent: (eventName, payload) => {
+                        if (eventName === 'PredictionStatusUpdated' || eventName === '.PredictionStatusUpdated') {
+                            this.handleRealtimeStatus(predictionId, payload)
+                        }
+                    },
+                    onSubscribed: () => {
+                        subscription.status = 'subscribed'
+                    },
+                    onError: (error) => {
+                        console.warn('Prediction status channel error', error)
+                        this.handleRealtimeSubscriptionError(error)
+                    },
+                })
+            } catch (error) {
+                console.warn('Unable to subscribe to prediction status channel', error)
+                return null
+            }
+
+            subscription.status = 'pending'
+            subscription.channelName = channelName
+
+            this.realtimeSubscription = subscription
+            this.realtimePredictionId = predictionId
+            this.realtimeFilters = filters ? { ...filters } : null
+            this.realtimeStatus = null
+            this.realtimeCompletionNotified = false
+
+            if (!awaitCompletion) {
+                this.realtimeAwaiter = null
+                return subscription
+            }
+
+            let resolveFn
+            let rejectFn
+            const promise = new Promise((resolve, reject) => {
+                resolveFn = resolve
+                rejectFn = reject
+            })
+
+            this.realtimeAwaiter = {
+                promise,
+                resolve: resolveFn,
+                reject: rejectFn,
+                settled: false,
+            }
+
+            return promise
+        },
+        handleRealtimeSubscriptionError(error) {
+            this.abortRealtimeAwaiter('REALTIME_UNAVAILABLE', error)
+            this.stopRealtimeTracking()
+        },
+        handleRealtimeStatus(predictionId, payload = {}) {
+            const targetId = typeof payload?.prediction_id === 'string' ? payload.prediction_id : predictionId
+            if (!targetId || targetId !== this.realtimePredictionId) {
+                return
+            }
+
+            const status = typeof payload?.status === 'string' ? payload.status.toLowerCase() : null
+            const progressRatio = typeof payload?.progress === 'number' ? payload.progress : null
+            const message = typeof payload?.message === 'string' ? payload.message : null
+
+            this.realtimeStatus = {
+                status,
+                progress: progressRatio,
+                updatedAt: payload?.updated_at ?? new Date().toISOString(),
+                message,
+            }
+
+            if (this.currentPrediction && this.currentPrediction.id === targetId) {
+                const next = { ...this.currentPrediction }
+
+                if (status) {
+                    next.status = status
+                }
+
+                if (payload?.queued_at) {
+                    next.queuedAt = payload.queued_at
+                }
+
+                if (payload?.started_at) {
+                    next.startedAt = payload.started_at
+                }
+
+                if (payload?.finished_at) {
+                    next.finishedAt = payload.finished_at
+                }
+
+                if (message) {
+                    next.progressMessage = message
+                } else if (status === 'queued' && !next.progressMessage) {
+                    next.progressMessage = 'Prediction queued. Waiting for worker availability.'
+                } else if (status === 'running' && !next.progressMessage) {
+                    next.progressMessage = 'Generating forecast using the latest model snapshot.'
+                }
+
+                if (progressRatio !== null && Number.isFinite(progressRatio)) {
+                    next.progress = progressRatioToPercent(progressRatio)
+                }
+
+                if (status === 'completed') {
+                    next.progress = 100
+                    next.progressMessage = 'Prediction complete.'
+                }
+
+                if (status === 'failed' && message) {
+                    next.errorMessage = message
+                }
+
+                this.currentPrediction = next
+            }
+
+            if (status === 'completed') {
+                void this.fetchPredictionSnapshot(targetId, this.realtimeFilters ?? this.lastFilters)
+                    .then((prediction) => {
+                        this.realtimeCompletionNotified = true
+                        notifySuccess({
+                            title: 'Prediction ready',
+                            message: 'Latest risk surface generated successfully.',
+                        })
+
+                        const resolved = prediction ?? this.currentPrediction
+                        this.settleRealtimeAwaiter((awaiter) => awaiter.resolve?.(resolved))
+                    })
+                    .catch((error) => {
+                        this.settleRealtimeAwaiter((awaiter) => awaiter.reject?.(error))
+                    })
+                    .finally(() => {
+                        this.stopRealtimeTracking()
+                    })
+
+                return
+            }
+
+            if (status === 'failed') {
+                const failureError = new Error(message || 'Prediction failed to generate results.')
+                failureError.code = 'PREDICTION_FAILED'
+
+                if (this.currentPrediction && this.currentPrediction.id === targetId) {
+                    failureError.prediction = this.currentPrediction
+                }
+
+                notifyError(failureError, failureError.message)
+                this.settleRealtimeAwaiter((awaiter) => awaiter.reject?.(failureError))
+                this.stopRealtimeTracking()
+            }
+        },
+        async fetchPredictionSnapshot(predictionId, filters = null) {
+            if (!predictionId) {
+                return null
+            }
+
+            const { data } = await apiClient.get(`/predictions/${predictionId}`)
+            const prediction = normalizePredictionResponse(
+                data?.prediction ?? data,
+                filters ?? this.lastFilters
+            )
+
+            if (!prediction) {
+                return null
+            }
+
+            const next = {
+                ...prediction,
+                progress:
+                    prediction.progress ??
+                    (prediction.status === 'completed' ? 100 : prediction.progress),
+                progressMessage:
+                    prediction.progressMessage ??
+                    (prediction.status === 'completed' ? 'Prediction complete.' : prediction.progressMessage),
+            }
+
+            this.currentPrediction = next
+            this.upsertHistory(next)
+            this.updateLastFiltersFromPrediction(next)
+
+            return next
         },
         updateLastFiltersFromPrediction(prediction) {
             if (!prediction || !prediction.filters) {
@@ -480,16 +782,13 @@ export const usePredictionStore = defineStore('prediction', {
             this.loading = true
 
             try {
-                const { data } = await apiClient.get(`/predictions/${predictionId}`)
-                const prediction = normalizePredictionResponse(data?.prediction ?? data, this.lastFilters)
+                const prediction = await this.fetchPredictionSnapshot(predictionId, this.lastFilters)
 
-                if (prediction) {
-                    this.currentPrediction = prediction
-                    this.upsertHistory(prediction)
-                    this.updateLastFiltersFromPrediction(prediction)
+                if (prediction && (prediction.status === 'queued' || prediction.status === 'running')) {
+                    this.startRealtimeTracking(prediction.id, prediction.filters ?? this.lastFilters)
                 }
 
-                return prediction
+                return prediction ?? null
             } finally {
                 this.loading = false
             }
@@ -546,6 +845,7 @@ export const usePredictionStore = defineStore('prediction', {
         async submitPrediction(filters) {
             this.loading = true
             this.cancelPolling()
+            this.realtimeCompletionNotified = false
             const previousFilters = {
                 horizon: this.lastFilters.horizon,
                 timestamp: this.lastFilters.timestamp,
@@ -627,22 +927,84 @@ export const usePredictionStore = defineStore('prediction', {
                     throw new Error('Prediction request did not return a valid identifier.')
                 }
 
-                this.currentPrediction = initialPrediction
-                this.upsertHistory(initialPrediction)
+                const normalizedInitial = {
+                    ...initialPrediction,
+                    progress: initialPrediction.progress ?? null,
+                    progressMessage:
+                        initialPrediction.progressMessage
+                        ?? (initialPrediction.status === 'completed'
+                            ? 'Prediction complete.'
+                            : 'Waiting for the prediction service to finish processing your request.'),
+                }
 
-                if (initialPrediction.status === 'queued' || initialPrediction.status === 'running') {
+                this.currentPrediction = normalizedInitial
+                this.upsertHistory(normalizedInitial)
+
+                const isPending = normalizedInitial.status === 'queued' || normalizedInitial.status === 'running'
+
+                if (isPending) {
                     notifyInfo({
                         title: 'Prediction queued',
                         message: 'Waiting for the prediction service to finish processing your request.',
                     })
                 }
 
-                if (initialPrediction.status === 'completed' && initialPrediction.outputs.length) {
+                if (normalizedInitial.status === 'completed' && normalizedInitial.outputs.length) {
                     notifySuccess({
                         title: 'Prediction ready',
                         message: 'Latest risk surface generated successfully.',
                     })
-                    return initialPrediction
+                    return normalizedInitial
+                }
+
+                let realtimePromise = null
+
+                if (isPending) {
+                    realtimePromise = this.startRealtimeTracking(normalizedInitial.id, submissionFilters, {
+                        awaitCompletion: true,
+                    })
+                }
+
+                if (realtimePromise) {
+                    try {
+                        const realtimeResult = await realtimePromise
+                        const resolved = realtimeResult ?? this.currentPrediction
+
+                        if (
+                            resolved
+                            && resolved.status === 'completed'
+                            && Array.isArray(resolved.outputs)
+                            && resolved.outputs.length
+                            && !this.realtimeCompletionNotified
+                        ) {
+                            notifySuccess({
+                                title: 'Prediction ready',
+                                message: 'Latest risk surface generated successfully.',
+                            })
+                        }
+
+                        return resolved
+                    } catch (realtimeError) {
+                        if (realtimeError?.name === 'AbortError') {
+                            throw realtimeError
+                        }
+
+                        if (realtimeError?.code === 'PREDICTION_FAILED') {
+                            if (realtimeError?.prediction) {
+                                this.currentPrediction = realtimeError.prediction
+                                this.upsertHistory(realtimeError.prediction)
+                            }
+                            throw realtimeError
+                        }
+
+                        if (
+                            realtimeError?.code !== 'REALTIME_UNAVAILABLE'
+                            && realtimeError?.code !== 'REALTIME_ABORTED'
+                            && realtimeError?.code !== 'REALTIME_REPLACED'
+                        ) {
+                            throw realtimeError
+                        }
+                    }
                 }
 
                 const controller = typeof AbortController !== 'undefined' ? new AbortController() : null
@@ -650,18 +1012,26 @@ export const usePredictionStore = defineStore('prediction', {
                     this.pollAbortController = controller
                 }
 
-                let finalPrediction = initialPrediction
+                let finalPrediction = normalizedInitial
 
                 try {
                     finalPrediction = await this.pollPredictionStatus(
-                        initialPrediction.id,
+                        normalizedInitial.id,
                         submissionFilters,
                         controller?.signal
                     )
-                    notifySuccess({
-                        title: 'Prediction ready',
-                        message: 'Latest risk surface generated successfully.',
-                    })
+                    if (
+                        finalPrediction
+                        && finalPrediction.status === 'completed'
+                        && Array.isArray(finalPrediction.outputs)
+                        && finalPrediction.outputs.length
+                        && !this.realtimeCompletionNotified
+                    ) {
+                        notifySuccess({
+                            title: 'Prediction ready',
+                            message: 'Latest risk surface generated successfully.',
+                        })
+                    }
                 } catch (pollError) {
                     if (pollError?.name === 'AbortError') {
                         throw pollError
@@ -675,7 +1045,7 @@ export const usePredictionStore = defineStore('prediction', {
                     }
 
                     if (pollError?.code === 'PREDICTION_TIMEOUT') {
-                        this.currentPrediction = pollError.prediction ?? initialPrediction
+                        this.currentPrediction = pollError.prediction ?? normalizedInitial
                         this.upsertHistory(this.currentPrediction)
                         notifyInfo({
                             title: 'Prediction pending',
@@ -721,6 +1091,7 @@ export const usePredictionStore = defineStore('prediction', {
         resetPrediction() {
             this.cancelPolling()
             this.currentPrediction = null
+            this.realtimeCompletionNotified = false
         },
     },
 })

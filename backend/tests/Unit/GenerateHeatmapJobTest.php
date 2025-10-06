@@ -5,6 +5,7 @@ namespace Tests\Unit;
 use App\Enums\PredictionOutputFormat;
 use App\Enums\PredictionStatus;
 use App\Enums\TrainingStatus;
+use App\Events\PredictionStatusUpdated;
 use App\Jobs\GenerateHeatmapJob;
 use App\Models\Dataset;
 use App\Models\Prediction;
@@ -14,6 +15,7 @@ use App\Services\ModelTrainingService;
 use App\Support\Phpml\ImputerFactory;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Storage;
 use InvalidArgumentException;
 use JsonException;
@@ -25,6 +27,7 @@ use Phpml\Exception\SerializeException;
 use Phpml\ModelManager;
 use Phpml\Preprocessing\Imputer;
 use Phpml\Preprocessing\Normalizer;
+use RuntimeException;
 use ReflectionMethod;
 use Tests\TestCase;
 use Throwable;
@@ -48,6 +51,7 @@ class GenerateHeatmapJobTest extends TestCase
     public function test_handle_generates_heatmap_from_trained_artifact(): void
     {
         Storage::fake('local');
+        Event::fake([PredictionStatusUpdated::class]);
 
         $dataset = Dataset::factory()->create([
             'source_type' => 'file',
@@ -99,6 +103,18 @@ class GenerateHeatmapJobTest extends TestCase
 
         $job = new GenerateHeatmapJob($prediction->id, $parameters, true);
         $job->handle();
+
+        Event::assertDispatchedTimes(PredictionStatusUpdated::class, 4);
+        Event::assertDispatched(PredictionStatusUpdated::class, function (PredictionStatusUpdated $event) use ($prediction): bool {
+            return $event->predictionId === $prediction->id
+                && $event->status === PredictionStatus::Running->value
+                && $event->progress === 0.45;
+        });
+        Event::assertDispatched(PredictionStatusUpdated::class, function (PredictionStatusUpdated $event) use ($prediction): bool {
+            return $event->predictionId === $prediction->id
+                && $event->status === PredictionStatus::Completed->value
+                && $event->progress === 1.0;
+        });
 
         $prediction->refresh()->load(['outputs', 'shapValues']);
 
@@ -804,5 +820,46 @@ class GenerateHeatmapJobTest extends TestCase
         }
 
         return 1.0 / (1.0 + exp(-$value));
+    }
+
+    public function test_handle_broadcasts_failure_status_updates(): void
+    {
+        Storage::fake('local');
+        Event::fake([PredictionStatusUpdated::class]);
+
+        $dataset = Dataset::factory()->create([
+            'source_type' => 'file',
+            'file_path' => 'datasets/missing.csv',
+            'mime_type' => 'text/csv',
+        ]);
+
+        $model = PredictiveModel::factory()->create([
+            'dataset_id' => $dataset->id,
+            'metadata' => ['artifact_path' => 'models/' . $dataset->id . '/missing.json'],
+        ]);
+
+        $prediction = Prediction::query()->create([
+            'model_id' => $model->id,
+            'dataset_id' => $dataset->id,
+            'status' => PredictionStatus::Queued,
+            'parameters' => ['center' => ['lat' => 0.0, 'lng' => 0.0]],
+            'queued_at' => now(),
+        ]);
+
+        $job = new GenerateHeatmapJob($prediction->id, $prediction->parameters ?? [], false);
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('Trained artifact for model is unavailable.');
+
+        try {
+            $job->handle();
+        } finally {
+            Event::assertDispatchedTimes(PredictionStatusUpdated::class, 2);
+            Event::assertDispatched(PredictionStatusUpdated::class, function (PredictionStatusUpdated $event) use ($prediction): bool {
+                return $event->predictionId === $prediction->id
+                    && $event->status === PredictionStatus::Failed->value
+                    && str_contains($event->message ?? '', 'Trained artifact');
+            });
+        }
     }
 }

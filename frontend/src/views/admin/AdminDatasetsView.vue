@@ -164,7 +164,7 @@
         <section aria-labelledby="ingest-history-heading" class="rounded-xl border border-stone-200 bg-white shadow-sm">
             <header class="flex flex-wrap items-center justify-between gap-4 border-b border-stone-200 px-6 py-4">
                 <div>
-                    <h2 id="ingest-history-heading" class="text-lg font-semibold text-stone-900">Dataset record ingestion runs</h2>
+                    <h2 id="ingest-history-heading" class="text-lg font-semibold text-stone-900">Dataset ingestion runs</h2>
                     <p class="text-sm text-stone-600">Monitor the most recent automated ingests and troubleshoot failures.</p>
                 </div>
                 <div class="flex flex-wrap items-center gap-3 text-sm text-stone-600">
@@ -388,6 +388,8 @@ const selectedRun = ref(null)
 let pollTimer = null
 let copyResetTimer = null
 const datasetSubscriptions = new Map()
+let ingestionRunsSubscription = null
+let ingestionReconnectTimer = null
 
 const datasetColumns = [
     { key: 'name', label: 'Name', sortable: true },
@@ -431,6 +433,7 @@ const lastRefreshedLabel = computed(() => formatDateTime(lastRefreshedAt.value))
 onMounted(() => {
     fetchDatasets()
     fetchRuns()
+    ensureIngestionRealtime()
     pollTimer = window.setInterval(() => {
         fetchDatasets(datasetsMeta.value.current_page, { silent: true })
         fetchRuns(meta.value.current_page, { silent: true })
@@ -446,6 +449,7 @@ onBeforeUnmount(() => {
         window.clearTimeout(copyResetTimer)
         copyResetTimer = null
     }
+    cleanupIngestionRealtime()
     cleanupDatasetSubscriptions()
 })
 
@@ -572,6 +576,123 @@ function handleDatasetRealtime(datasetId, payload = {}) {
     }
 }
 
+function handleIngestionRunRealtime(payload = {}) {
+    const rawId = payload?.run_id ?? payload?.runId ?? null
+    const runId = Number(rawId)
+    if (!Number.isFinite(runId)) {
+        return
+    }
+
+    const index = runs.value.findIndex((run) => Number(run.id ?? run.run_id ?? run.runId ?? runId) === runId)
+    if (index === -1) {
+        return
+    }
+
+    const current = runs.value[index]
+    const status = typeof payload?.status === 'string' ? payload.status : current.status
+    const message = typeof payload?.message === 'string' ? payload.message : null
+
+    const updated = {
+        ...current,
+        status,
+        records_expected: normalizeInteger(payload?.records_expected, current.records_expected),
+        records_inserted: normalizeInteger(payload?.records_inserted, current.records_inserted),
+        records_detected: normalizeInteger(payload?.records_detected, current.records_detected),
+        records_existing: normalizeInteger(payload?.records_existing, current.records_existing),
+        updated_at: payload?.updated_at ?? current.updated_at ?? current.updatedAt ?? null,
+        started_at: payload?.started_at ?? current.started_at ?? current.startedAt ?? null,
+        finished_at: payload?.finished_at ?? current.finished_at ?? current.finishedAt ?? null,
+        dry_run: typeof payload?.dry_run === 'boolean' ? payload.dry_run : current.dry_run ?? current.dryRun ?? false,
+    }
+
+    if (status === 'failed') {
+        updated.error_message = message ?? current.error_message ?? null
+    } else {
+        updated.error_message = null
+    }
+
+    runs.value.splice(index, 1, updated)
+
+    const selectedId = selectedRun.value
+        ? Number(selectedRun.value.id ?? selectedRun.value.run_id ?? selectedRun.value.runId ?? NaN)
+        : NaN
+
+    if (Number.isFinite(selectedId) && selectedId === runId) {
+        selectedRun.value = { ...selectedRun.value, ...updated }
+    }
+}
+
+function ensureIngestionRealtime() {
+    if (ingestionRunsSubscription) {
+        return
+    }
+
+    const broadcast = getBroadcastClient()
+    if (!broadcast) {
+        scheduleIngestionReconnect()
+        return
+    }
+
+    try {
+        ingestionRunsSubscription = broadcast.subscribe('dataset.ingestion.runs', {
+            onEvent: (eventName, payload) => {
+                if (eventName === 'DatasetIngestionRunUpdated' || eventName === '.DatasetIngestionRunUpdated') {
+                    handleIngestionRunRealtime(payload)
+                }
+            },
+            onError: (error) => {
+                console.warn('Dataset ingestion runs channel error', error)
+                cleanupIngestionRealtime()
+                scheduleIngestionReconnect()
+            },
+        })
+    } catch (error) {
+        console.warn('Unable to subscribe to dataset ingestion runs channel', error)
+        cleanupIngestionRealtime()
+        scheduleIngestionReconnect()
+    }
+}
+
+function scheduleIngestionReconnect(delay = 5000) {
+    if (typeof window === 'undefined') {
+        return
+    }
+
+    if (ingestionReconnectTimer) {
+        return
+    }
+
+    ingestionReconnectTimer = window.setTimeout(() => {
+        ingestionReconnectTimer = null
+        ensureIngestionRealtime()
+    }, delay)
+}
+
+function cleanupIngestionRealtime() {
+    if (typeof window !== 'undefined' && ingestionReconnectTimer) {
+        window.clearTimeout(ingestionReconnectTimer)
+        ingestionReconnectTimer = null
+    }
+
+    const subscription = ingestionRunsSubscription
+    if (!subscription) {
+        ingestionRunsSubscription = null
+        return
+    }
+
+    const broadcast = getBroadcastClient()
+    if (broadcast) {
+        try {
+            const channelName = subscription?.channelName ?? 'dataset.ingestion.runs'
+            broadcast.unsubscribe(channelName)
+        } catch (error) {
+            console.warn('Error unsubscribing from dataset ingestion runs channel', error)
+        }
+    }
+
+    ingestionRunsSubscription = null
+}
+
 async function fetchDatasets(page = 1, options = {}) {
     const silent = options.silent ?? false
     if (!silent) {
@@ -636,6 +757,28 @@ function toggleDatasetSort(key) {
 function formatDatasetSource(source) {
     if (!source) return '—'
     return source === 'file' ? 'File upload' : source === 'url' ? 'Remote URL' : source
+}
+
+function normalizeInteger(value, fallback = null) {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+        return Math.max(0, Math.trunc(value))
+    }
+
+    if (typeof value === 'string') {
+        const trimmed = value.trim()
+        if (trimmed) {
+            const parsed = Number(trimmed)
+            if (Number.isFinite(parsed)) {
+                return Math.max(0, Math.trunc(parsed))
+            }
+        }
+    }
+
+    if (typeof fallback === 'number' && Number.isFinite(fallback)) {
+        return Math.max(0, Math.trunc(fallback))
+    }
+
+    return 0
 }
 
 function datasetStatusLabel(status) {
@@ -763,6 +906,7 @@ async function fetchRuns(page = 1, options = {}) {
             next: data?.links?.next ?? null,
         }
         lastRefreshedAt.value = new Date()
+        ensureIngestionRealtime()
     } catch (error) {
         notifyError(error, 'Unable to load ingestion runs.')
         errorMessage.value = error?.response?.data?.message || error.message || 'Unable to load ingestion runs.'
