@@ -12,10 +12,7 @@
             <directory>tests/Feature</directory>
         </testsuite>
     </testsuites>
-    <coverage processUncoveredFiles="true">
-        <include>
-            <directory>app</directory>
-        </include>
+    <coverage>
         <report>
             <html outputDirectory="storage/coverage"/>
             <text outputFile="storage/coverage.txt" showUncoveredFiles="true"/>

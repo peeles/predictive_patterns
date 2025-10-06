@@ -1,20 +1,19 @@
 import { onMounted, onUnmounted, ref } from 'vue'
-import { echo } from '@/plugins/echo'
+import { echo } from '../plugins/echo'
 
-type ConnectionState = 'connecting' | 'connected' | 'disconnected' | 'unavailable' | 'failed' | 'initialized'
-
-type ConnectionEvent = {
-  data?: { message?: string; code?: string | number }
-  error?: { message?: string }
-  type?: string
-}
+const CONNECTING = 'connecting'
+const CONNECTED = 'connected'
+const DISCONNECTED = 'disconnected'
+const UNAVAILABLE = 'unavailable'
+const FAILED = 'failed'
+const INITIALIZED = 'initialized'
 
 const connected = ref(false)
-const state = ref<ConnectionState>('initialized')
-const reason = ref<string | null>(null)
+const state = ref(INITIALIZED)
+const reason = ref(null)
 
 let bindings = 0
-let teardown: (() => void) | null = null
+let teardown = null
 
 function attach() {
   bindings += 1
@@ -22,7 +21,7 @@ function attach() {
     return
   }
 
-  const connector = (echo.connector ?? {}) as { pusher?: any }
+  const connector = echo.connector ?? {}
   const pusher = connector?.pusher
   if (!pusher?.connection) {
     return
@@ -30,41 +29,41 @@ function attach() {
 
   const handleConnected = () => {
     connected.value = true
-    state.value = 'connected'
+    state.value = CONNECTED
     reason.value = null
   }
 
-  const handleDisconnected = (event?: ConnectionEvent) => {
+  const handleDisconnected = (event) => {
     connected.value = false
-    state.value = 'disconnected'
+    state.value = DISCONNECTED
     reason.value = extractReason(event)
   }
 
-  const handleStateChange = ({ current }: { previous: string; current: string }) => {
-    state.value = (current as ConnectionState) ?? 'initialized'
-    if (current === 'connected') {
+  const handleStateChange = ({ current }) => {
+    state.value = current ?? INITIALIZED
+    if (current === CONNECTED) {
       connected.value = true
       reason.value = null
-    } else if (current === 'connecting') {
+    } else if (current === CONNECTING) {
       connected.value = false
     }
   }
 
-  const handleError = (event?: ConnectionEvent) => {
+  const handleError = (event) => {
     connected.value = false
-    state.value = 'failed'
+    state.value = FAILED
+    reason.value = extractReason(event)
+  }
+
+  const handleUnavailable = (event) => {
+    connected.value = false
+    state.value = UNAVAILABLE
     reason.value = extractReason(event)
   }
 
   pusher.connection.bind('connected', handleConnected)
   pusher.connection.bind('disconnected', handleDisconnected)
   pusher.connection.bind('state_change', handleStateChange)
-  const handleUnavailable = (event?: ConnectionEvent) => {
-    connected.value = false
-    state.value = 'unavailable'
-    reason.value = extractReason(event)
-  }
-
   pusher.connection.bind('error', handleError)
   pusher.connection.bind('failed', handleError)
   pusher.connection.bind('unavailable', handleUnavailable)
@@ -87,7 +86,7 @@ function detach() {
   }
 }
 
-function extractReason(event?: ConnectionEvent): string | null {
+function extractReason(event) {
   if (!event) {
     return null
   }
@@ -124,12 +123,12 @@ export function useRealtime() {
 export function disconnectRealtime() {
   echo.disconnect()
   connected.value = false
-  state.value = 'disconnected'
+  state.value = DISCONNECTED
 }
 
 export function reconnectRealtime() {
   echo.disconnect()
   connected.value = false
-  state.value = 'connecting'
+  state.value = CONNECTING
   echo.connect()
 }

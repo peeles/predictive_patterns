@@ -15,7 +15,7 @@ $allowedOrigins = array_values(array_filter(array_map(
 $resolvedOrigins = $allowedOrigins !== [] ? $allowedOrigins : $defaultOrigins;
 
 return [
-    'paths' => ['api/*', 'sanctum/csrf-cookie', 'broadcasting/auth'],
+    'paths' => ['*'],
     'allowed_methods' => ['*'],
     'allowed_origins' => $resolvedOrigins,
     'allowed_origins_patterns' => [],

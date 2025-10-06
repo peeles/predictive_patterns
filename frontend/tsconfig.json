@@ -1,19 +1,23 @@
 {
-  "extends": "@vue/tsconfig/tsconfig.json",
   "compilerOptions": {
-    "composite": true,
+    "target": "ES2015",
     "allowJs": true,
     "checkJs": false,
     "resolveJsonModule": true,
     "moduleResolution": "bundler",
+    "module": "esnext",
     "types": [
       "vitest",
       "vite/client",
-      "@playwright/test"
+      "@playwright/test",
+      "node"
+    ],
+    "lib": [
+      "ESNext",
+      "DOM"
     ]
   },
   "include": [
-    "env.d.ts",
     "src/**/*",
     "tests/**/*",
     "playwright.config.ts"
