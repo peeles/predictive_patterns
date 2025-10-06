@@ -1,6 +1,6 @@
 import {defineStore} from 'pinia'
 import apiClient from '../services/apiClient'
-import {getBroadcastClient} from '../services/broadcast'
+import {subscribeToChannel, unsubscribeFromChannel} from '../services/realtime'
 import {notifyError, notifySuccess} from '../utils/notifications'
 
 export const MAX_FILE_SIZE_BYTES = 200 * 1024 * 1024 // 200MB
@@ -376,22 +376,19 @@ export const useDatasetStore = defineStore('dataset', {
                 return
             }
 
-            const broadcast = getBroadcastClient()
-            if (!broadcast) {
-                return
-            }
-
             this.stopRealtimeTracking()
 
             try {
                 const channelName = `datasets.${datasetId}.status`
-                this.realtimeSubscription = broadcast.subscribe(channelName, {
+                this.realtimeSubscription = subscribeToChannel(channelName, {
+                    events: ['DatasetStatusUpdated'],
                     onEvent: (eventName, payload) => {
-                        if (eventName === 'DatasetStatusUpdated' || eventName === '.DatasetStatusUpdated') {
+                        if (eventName === 'DatasetStatusUpdated') {
                             this.handleRealtimeStatus(payload)
                         }
                     },
-                    onError: () => {
+                    onError: (error) => {
+                        console.warn('Dataset status channel error', error)
                         if (this.uploadState === 'processing') {
                             this.uploadState = 'processing'
                         }
@@ -407,15 +404,7 @@ export const useDatasetStore = defineStore('dataset', {
                 return
             }
 
-            const broadcast = getBroadcastClient()
-            if (broadcast) {
-                try {
-                    const channelName = subscription?.channelName ?? `datasets.${this.uploadDatasetId}.status`
-                    broadcast.unsubscribe(channelName)
-                } catch (error) {
-                    console.warn('Error unsubscribing from datasets status channel', error)
-                }
-            }
+            unsubscribeFromChannel(subscription)
 
             this.realtimeSubscription = null
         },

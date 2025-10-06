@@ -37,70 +37,57 @@
 </template>
 
 <script setup>
-import { computed, onMounted, onUnmounted, ref } from 'vue'
-import { disconnectBroadcastClient, getBroadcastClient, onConnectionStateChange } from '../../services/broadcast.js'
+import { computed, ref, watch } from 'vue'
+import { useRealtime, reconnectRealtime } from '@/composables/useRealtime'
 
-const connectionState = ref({ state: 'disconnected', reason: null, driver: 'reverb' })
+const { state, reason } = useRealtime()
+
 const attempted = ref(false)
 const hasConnected = ref(false)
 const dismissed = ref(false)
 
-function handleStateChange(next) {
-    if (!next || typeof next.state !== 'string') {
-        return
-    }
+watch(
+    state,
+    (next) => {
+        const currentState = (next ?? '').toLowerCase()
 
-    const currentState = next.state.toLowerCase()
-    connectionState.value = next
+        if (currentState === 'connected') {
+            hasConnected.value = true
+            attempted.value = false
+            dismissed.value = false
+            return
+        }
 
-    if (currentState === 'connected') {
-        hasConnected.value = true
-        attempted.value = false
-        dismissed.value = false
-        return
-    }
+        const isInitialising = !hasConnected.value && ['connecting', 'disconnected', 'initialized'].includes(currentState)
+        if (isInitialising) {
+            return
+        }
 
-    const isInitialising = !hasConnected.value && (currentState === 'connecting' || currentState === 'disconnected')
-    if (isInitialising) {
-        return
-    }
+        attempted.value = true
+    },
+    { immediate: true }
+)
 
-    attempted.value = true
-}
-
-let unsubscribe = null
-
-onMounted(() => {
-    unsubscribe = onConnectionStateChange(handleStateChange)
-})
-
-onUnmounted(() => {
-    if (typeof unsubscribe === 'function') {
-        unsubscribe()
-    }
-})
+const connectionState = computed(() => ({
+    state: state.value ?? 'disconnected',
+    reason: reason.value ?? null,
+    driver: 'pusher',
+}))
 
 const visible = computed(() => {
-    if (dismissed.value) {
+    if (dismissed.value || !attempted.value) {
         return false
     }
 
-    if (!attempted.value) {
-        return false
-    }
-
-    const state = (connectionState.value?.state ?? '').toLowerCase()
-    return state !== 'connected' && state !== ''
+    const current = (connectionState.value.state ?? '').toLowerCase()
+    return current !== 'connected' && current !== ''
 })
 
-const driverLabel = computed(() => {
-    const driver = (connectionState.value?.driver ?? 'reverb').toLowerCase()
-    return driver === 'pusher' ? 'Pusher' : 'Reverb'
-})
+const driverLabel = computed(() => 'Sockudo')
 
 const title = computed(() => {
-    const state = (connectionState.value?.state ?? '').toLowerCase()
-    if (state === 'reconnecting' || state === 'connecting') {
+    const current = (connectionState.value.state ?? '').toLowerCase()
+    if (current === 'reconnecting' || current === 'connecting') {
         return 'Realtime connection interrupted'
     }
 
@@ -108,11 +95,11 @@ const title = computed(() => {
 })
 
 const message = computed(() => {
-    const state = (connectionState.value?.state ?? '').toLowerCase()
-    const reason = connectionState.value?.reason ?? null
+    const current = (connectionState.value.state ?? '').toLowerCase()
     const label = driverLabel.value
+    const reasonDetail = connectionState.value.reason ?? null
 
-    switch (state) {
+    switch (current) {
         case 'reconnecting':
             return `The ${label} websocket connection dropped. Retrying automatically…`
         case 'connecting':
@@ -120,19 +107,21 @@ const message = computed(() => {
                 ? `Reconnecting to the ${label} websocket service…`
                 : `Initialising the ${label} websocket connection…`
         case 'error':
-            return resolveReasonMessage(reason, label)
+        case 'failed':
+        case 'unavailable':
+            return resolveReasonMessage(reasonDetail, label)
         case 'disconnected':
             if (hasConnected.value) {
                 return `The ${label} websocket disconnected. Background polling will continue while we retry.`
             }
-            return resolveReasonMessage(reason, label)
+            return resolveReasonMessage(reasonDetail, label)
         default:
-            return resolveReasonMessage(reason, label)
+            return resolveReasonMessage(reasonDetail, label)
     }
 })
 
-function resolveReasonMessage(reason, label) {
-    switch (reason) {
+function resolveReasonMessage(reasonCode, label) {
+    switch (reasonCode) {
         case 'missing-key':
             return `Realtime credentials are missing. Confirm the ${label} key is configured on the server and client.`
         case 'connect-failed':
@@ -150,9 +139,7 @@ function resolveReasonMessage(reason, label) {
 
 function retry() {
     dismissed.value = false
-    disconnectBroadcastClient()
-    const client = getBroadcastClient()
-    client?.ensureConnection?.()
+    reconnectRealtime()
 }
 
 function dismiss() {

@@ -358,7 +358,7 @@ import PaginationControls from '../../components/common/pagination/PaginationCon
 import DatasetIngestModal from '../../components/datasets/DatasetIngestModal.vue'
 import apiClient from '../../services/apiClient'
 import { notifyError } from '../../utils/notifications'
-import { getBroadcastClient } from '../../services/broadcast'
+import { subscribeToChannel, unsubscribeFromChannel } from '../../services/realtime'
 import PageHeader from '../../components/common/PageHeader.vue'
 
 const wizardOpen = ref(false)
@@ -473,26 +473,17 @@ function currentDatasetFilters() {
 }
 
 function cleanupDatasetSubscriptions() {
-    const broadcast = getBroadcastClient()
     for (const [datasetId, subscription] of datasetSubscriptions.entries()) {
-        if (broadcast) {
-            try {
-                const channelName = subscription?.channelName ?? `datasets.${datasetId}.status`
-                broadcast.unsubscribe(channelName)
-            } catch (error) {
-                console.warn('Error unsubscribing from datasets status channel', error)
-            }
+        try {
+            unsubscribeFromChannel(subscription)
+        } catch (error) {
+            console.warn('Error unsubscribing from datasets status channel', error)
         }
         datasetSubscriptions.delete(datasetId)
     }
 }
 
 function syncDatasetSubscriptions() {
-    const broadcast = getBroadcastClient()
-    if (!broadcast) {
-        return
-    }
-
     const activeIds = new Set(
         datasets.value
             .filter((dataset) => dataset.status === 'processing' || dataset.status === 'pending')
@@ -502,8 +493,7 @@ function syncDatasetSubscriptions() {
     for (const [datasetId, subscription] of datasetSubscriptions.entries()) {
         if (!activeIds.has(datasetId)) {
             try {
-                const channelName = subscription?.channelName ?? `datasets.${datasetId}.status`
-                broadcast.unsubscribe(channelName)
+                unsubscribeFromChannel(subscription)
             } catch (error) {
                 console.warn('Error unsubscribing from datasets status channel', error)
             }
@@ -517,9 +507,10 @@ function syncDatasetSubscriptions() {
         }
 
         try {
-            const subscription = broadcast.subscribe(`datasets.${dataset.id}.status`, {
+            const subscription = subscribeToChannel(`datasets.${dataset.id}.status`, {
+                events: ['DatasetStatusUpdated'],
                 onEvent: (eventName, payload) => {
-                    if (eventName === 'DatasetStatusUpdated' || eventName === '.DatasetStatusUpdated') {
+                    if (eventName === 'DatasetStatusUpdated') {
                         handleDatasetRealtime(dataset.id, payload)
                     }
                 },
@@ -561,12 +552,10 @@ function handleDatasetRealtime(datasetId, payload = {}) {
     datasets.value.splice(index, 1, updated)
 
     if (status === 'ready' || status === 'failed') {
-        const broadcast = getBroadcastClient()
         const subscription = datasetSubscriptions.get(datasetId)
-        if (subscription && broadcast) {
+        if (subscription) {
             try {
-                const channelName = subscription?.channelName ?? `datasets.${datasetId}.status`
-                broadcast.unsubscribe(channelName)
+                unsubscribeFromChannel(subscription)
             } catch (error) {
                 console.warn('Error unsubscribing from datasets status channel', error)
             }
@@ -626,16 +615,11 @@ function ensureIngestionRealtime() {
         return
     }
 
-    const broadcast = getBroadcastClient()
-    if (!broadcast) {
-        scheduleIngestionReconnect()
-        return
-    }
-
     try {
-        ingestionRunsSubscription = broadcast.subscribe('dataset.ingestion.runs', {
+        ingestionRunsSubscription = subscribeToChannel('dataset.ingestion.runs', {
+            events: ['DatasetIngestionRunUpdated'],
             onEvent: (eventName, payload) => {
-                if (eventName === 'DatasetIngestionRunUpdated' || eventName === '.DatasetIngestionRunUpdated') {
+                if (eventName === 'DatasetIngestionRunUpdated') {
                     handleIngestionRunRealtime(payload)
                 }
             },
@@ -679,14 +663,10 @@ function cleanupIngestionRealtime() {
         return
     }
 
-    const broadcast = getBroadcastClient()
-    if (broadcast) {
-        try {
-            const channelName = subscription?.channelName ?? 'dataset.ingestion.runs'
-            broadcast.unsubscribe(channelName)
-        } catch (error) {
-            console.warn('Error unsubscribing from dataset ingestion runs channel', error)
-        }
+    try {
+        unsubscribeFromChannel(subscription)
+    } catch (error) {
+        console.warn('Error unsubscribing from dataset ingestion runs channel', error)
     }
 
     ingestionRunsSubscription = null

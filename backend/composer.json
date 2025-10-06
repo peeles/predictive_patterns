@@ -9,7 +9,6 @@
         "php": "^8.2",
         "laravel/framework": "^12.0",
         "laravel/horizon": "^5.34",
-        "laravel/reverb": "^1.6",
         "laravel/sanctum": "^4.2",
         "laravel/tinker": "^2.10.1",
         "php-ai/php-ml": "^0.10.0"

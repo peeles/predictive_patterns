@@ -97,14 +97,40 @@ Authenticated routes require either an `Authorization: Bearer <token>` header is
 | `DATASET_RECORD_INGESTION_PROGRESS_INTERVAL` | Interval (rows) between ingestion progress log entries. | `5000` |
 | `DATASET_RECORD_INGESTION_CHUNK_SIZE` | Batch size used when inserting dataset records. | `500` |
 | `QUEUE_CONNECTION` | Queue backend for ingestion jobs (`sync`, `database`, etc.). | `sync` |
-| `BROADCAST_DRIVER` | Primary broadcast driver. Laravel Reverb is used by default. | `reverb` |
-| `BROADCAST_ENABLE_PUSHER_FALLBACK` | Opt-in flag that retries failed broadcasts via the configured Pusher connection and logs telemetry. Requires `PUSHER_APP_ID`, `PUSHER_APP_KEY`, and `PUSHER_APP_SECRET`. | `false` |
+| `BROADCAST_DRIVER` | Primary broadcast driver. Sockudo (Pusher protocol) is used by default. | `pusher` |
+| `PUSHER_APP_ID` | Sockudo application identifier used for websocket authentication. | `predictive-patterns` |
+| `PUSHER_APP_KEY` | Public Sockudo key shared with SPA clients. | `local-key` |
+| `PUSHER_APP_SECRET` | Sockudo application secret used to sign broadcast requests. | `local-secret` |
+| `PUSHER_HOST` | Hostname of the Sockudo server. | `localhost` |
+| `PUSHER_PORT` | WebSocket port exposed by Sockudo. | `6001` |
+| `PUSHER_SCHEME` | Protocol used when connecting to Sockudo (`http` or `https`). | `http` |
 | `TRAINING_QUEUE_DRIVER` | Backend driver used for the dedicated training queue. | `redis` |
 | `TRAINING_QUEUE_CONNECTION` | Redis connection name (falls back to `REDIS_QUEUE_CONNECTION`). | Same as `REDIS_QUEUE_CONNECTION` |
 | `TRAINING_QUEUE` | Queue name used by the long-running training worker. | `training` |
 | `TRAINING_QUEUE_RETRY_AFTER` | Seconds before a stalled training job is retried. | `1800` |
 
 Keep secrets such as database credentials and API keys in the `.env` file and never commit them to version control.
+
+## Realtime broadcasting with Sockudo
+
+Sockudo provides the local websocket server that powers event broadcasting. To run the full stack locally:
+
+```bash
+docker compose up -d sockudo
+docker compose up -d backend horizon frontend
+docker compose exec backend php artisan queue:work
+docker compose exec backend php artisan serve
+pnpm --dir ../frontend dev
+```
+
+Once the services are running you can verify the websocket server with:
+
+```bash
+curl http://localhost:6001/up/predictive-patterns
+curl http://localhost:9601/metrics
+```
+
+Both endpoints should return a `200` response when Sockudo is healthy.
 
 ## Model training queue
 

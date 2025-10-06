@@ -19,7 +19,7 @@ class BroadcastDispatcher
      */
     public static function dispatch(object $event, array $context = []): void
     {
-        $driver = config('broadcasting.default', 'reverb');
+        $driver = config('broadcasting.default', 'pusher');
         $fallbackEnabled = (bool) config('broadcasting.fallback.pusher.enabled', false);
         $fallbackRequested = (bool) config('broadcasting.fallback.pusher.requested', false);
         $fallbackAvailable = (bool) config('broadcasting.fallback.pusher.available', false);
