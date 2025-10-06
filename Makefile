@@ -11,11 +11,11 @@ key:
 
 fresh:
 	docker compose exec backend php artisan migrate:fresh --seed
+
+clear:
 	docker compose exec backend php artisan cache:clear
 	docker compose exec backend php artisan config:clear
 	docker compose exec backend php artisan config:cache
-
-routes:
 	docker compose exec backend php artisan route:clear
 	docker compose exec backend php artisan route:cache
 
