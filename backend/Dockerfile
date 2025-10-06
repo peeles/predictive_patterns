@@ -21,11 +21,16 @@ COPY docker/php.ini /usr/local/etc/php/conf.d/custom.ini
 # Copy application
 COPY . /var/www/html
 
+# Ensure the entrypoint script is executable so migrations can run before commands
+RUN chmod +x docker/entrypoint.sh
+
 # Set permissions
 RUN chown -R www-data:www-data /var/www/html \
     && chmod -R 775 /var/www/html/storage \
     && chmod -R 775 /var/www/html/bootstrap/cache
 
 EXPOSE 8000
+
+ENTRYPOINT ["./docker/entrypoint.sh"]
 
 CMD ["php", "artisan", "serve", "--host=0.0.0.0", "--port=8000"]
