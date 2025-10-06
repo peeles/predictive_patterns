@@ -167,7 +167,7 @@ const copiedId = ref('')
 let copyTimer = null
 
 const datasetId = computed(() => route.params.id)
-const excludedPreviewKeys = ['uuid', 'crimeid']
+const excludedPreviewKeys = ['uuid', 'datasetid']
 
 const previewHeaders = computed(() => dataset.value?.metadata?.headers ?? [])
 const previewRows = computed(() => dataset.value?.metadata?.preview_rows ?? [])

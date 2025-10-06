@@ -3,7 +3,7 @@
 namespace App\Services;
 
 use App\DataTransferObjects\HexAggregate;
-use App\Models\Crime;
+use App\Models\DatasetRecord;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Closure;
@@ -12,10 +12,12 @@ use Illuminate\Cache\TaggableStore;
 use Illuminate\Contracts\Cache\Repository as CacheRepository;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use InvalidArgumentException;
 
 /**
- * Aggregates crime counts across H3 cells with optional temporal and category filtering.
+ * Aggregates dataset record counts across H3 cells with optional temporal and category filtering.
  */
 class H3AggregationService
 {
@@ -32,7 +34,7 @@ class H3AggregationService
     }
 
     /**
-     * Aggregate crimes across H3 cells intersecting the provided bounding box.
+     * Aggregate dataset records across H3 cells intersecting the provided bounding box.
      *
      * @param array{0: float, 1: float, 2: float, 3: float} $boundingBox
      * @return HexAggregate[]
@@ -45,12 +47,24 @@ class H3AggregationService
         ?CarbonInterface $from,
         ?CarbonInterface $to,
         ?string          $category = null,
+        ?int             $timeOfDayStart = null,
+        ?int             $timeOfDayEnd = null,
+        ?string          $severity = null,
     ): array {
         if (!in_array($resolution, self::SUPPORTED_RESOLUTIONS, true)) {
             throw new InvalidArgumentException('Unsupported resolution supplied.');
         }
 
-        $cacheKey = $this->buildCacheKey($boundingBox, $resolution, $from, $to, $category);
+        $cacheKey = $this->buildCacheKey(
+            $boundingBox,
+            $resolution,
+            $from,
+            $to,
+            $category,
+            $timeOfDayStart,
+            $timeOfDayEnd,
+            $severity,
+        );
 
         $tags = $this->resolveCacheTags($resolution, $from, $to);
 
@@ -58,7 +72,16 @@ class H3AggregationService
             $cacheKey,
             $tags,
             now()->addMinutes(self::CACHE_TTL_MINUTES),
-            fn () => $this->runAggregateQuery($boundingBox, $resolution, $from, $to, $category)
+            fn () => $this->runAggregateQuery(
+                $boundingBox,
+                $resolution,
+                $from,
+                $to,
+                $category,
+                $timeOfDayStart,
+                $timeOfDayEnd,
+                $severity,
+            )
         );
     }
 
@@ -68,7 +91,7 @@ class H3AggregationService
      * @param CarbonInterface|string|null $from
      * @param CarbonInterface|string|null $to
      *
-     * @return array<string, array{count: int, categories: array<string, int>}> indexed by H3 cell id
+     * @return array<string, array{count: int, categories: array<string, int>, statistics: array<string, mixed>}> indexed by H3 cell id
      */
     public function aggregateByBbox(
         string                      $bboxString,
@@ -76,19 +99,49 @@ class H3AggregationService
         CarbonInterface|string|null  $from = null,
         CarbonInterface|string|null  $to = null,
         ?string                      $category = null,
+        ?int                         $timeOfDayStart = null,
+        ?int                         $timeOfDayEnd = null,
+        ?string                      $severity = null,
+        ?float                       $confidenceLevel = null,
     ): array {
         $boundingBox = $this->parseBoundingBox($bboxString);
         $fromCarbon = $from instanceof CarbonInterface ? $from : $this->parseDate($from);
         $toCarbon = $to instanceof CarbonInterface ? $to : $this->parseDate($to);
         $category = $this->normaliseCategory($category);
 
-        $aggregates = $this->aggregateByBoundingBox($boundingBox, $resolution, $fromCarbon, $toCarbon, $category);
+        [$timeOfDayStart, $timeOfDayEnd] = $this->normaliseTimeOfDayRange($timeOfDayStart, $timeOfDayEnd);
+        $severity = $this->normaliseSeverity($severity);
+        $confidenceLevel = $this->normaliseConfidenceLevel($confidenceLevel);
+
+        $aggregates = $this->aggregateByBoundingBox(
+            $boundingBox,
+            $resolution,
+            $fromCarbon,
+            $toCarbon,
+            $category,
+            $timeOfDayStart,
+            $timeOfDayEnd,
+            $severity,
+        );
 
         $result = [];
         foreach ($aggregates as $aggregate) {
+            $meanRisk = $aggregate->meanRiskScore();
+            $confidenceInterval = $aggregate->confidenceInterval($confidenceLevel);
+
             $result[$aggregate->h3Index] = [
                 'count' => $aggregate->count,
                 'categories' => $aggregate->categories,
+                'statistics' => [
+                    'mean_risk_score' => $meanRisk !== null ? round($meanRisk, 4) : null,
+                    'confidence_interval' => $confidenceInterval !== null ? [
+                        'lower' => round($confidenceInterval['lower'], 4),
+                        'upper' => round($confidenceInterval['upper'], 4),
+                        'level' => $confidenceInterval['level'],
+                    ] : null,
+                    'sample_size' => $aggregate->riskValueCount,
+                    'confidence_level' => $confidenceInterval['level'] ?? $confidenceLevel,
+                ],
             ];
         }
 
@@ -112,6 +165,45 @@ class H3AggregationService
         }
     }
 
+    private function applyTimeOfDayFilter(
+        Builder $query,
+        ?int $timeOfDayStart,
+        ?int $timeOfDayEnd
+    ): void {
+        if ($timeOfDayStart === null && $timeOfDayEnd === null) {
+            return;
+        }
+
+        [$start, $end] = $this->normaliseTimeOfDayRange($timeOfDayStart, $timeOfDayEnd);
+
+        if ($start === null || $end === null) {
+            return;
+        }
+
+        $hourExpression = DB::raw($this->hourExtractionExpression($query));
+
+        if ($start <= $end) {
+            $query->whereBetween($hourExpression, [$start, $end]);
+
+            return;
+        }
+
+        $query->where(static function (Builder $builder) use ($hourExpression, $start, $end): void {
+            $builder
+                ->whereBetween($hourExpression, [$start, 23])
+                ->orWhereBetween($hourExpression, [0, $end]);
+        });
+    }
+
+    private function applySeverityFilter(Builder $query, ?string $severity): void
+    {
+        if ($severity === null) {
+            return;
+        }
+
+        $query->where('severity', $severity);
+    }
+
     /**
      * Execute the aggregation query without caching.
      *
@@ -124,24 +216,35 @@ class H3AggregationService
         int              $resolution,
         ?CarbonInterface $from,
         ?CarbonInterface $to,
-        ?string          $category
+        ?string          $category,
+        ?int             $timeOfDayStart,
+        ?int             $timeOfDayEnd,
+        ?string          $severity,
     ): array {
         [$west, $south, $east, $north] = $boundingBox;
 
-        $query = Crime::query()
+        $query = DatasetRecord::query()
             ->whereBetween('lng', [$west, $east])
             ->whereBetween('lat', [$south, $north]);
 
         $this->applyTemporalFilters($query, $from, $to);
+        $this->applyTimeOfDayFilter($query, $timeOfDayStart, $timeOfDayEnd);
 
         if ($category) {
             $query->where('category', $category);
         }
 
+        $this->applySeverityFilter($query, $severity);
+
         $column = sprintf('h3_res%d', $resolution);
 
         return $query
-            ->selectRaw("$column as h3, category, count(*) as c")
+            ->selectRaw(
+                "$column as h3, category, count(*) as c, " .
+                "count(risk_score) as risk_value_count, " .
+                "COALESCE(sum(risk_score), 0) as risk_sum, " .
+                "COALESCE(sum(POWER(risk_score, 2)), 0) as risk_sum_squares"
+            )
             ->groupBy($column, 'category')
             ->get()
             ->groupBy('h3')
@@ -154,8 +257,18 @@ class H3AggregationService
                         ->pluck('c', 'category')
                         ->map(static fn ($value) => (int) $value)
                         ->toArray();
+                    $riskValueCount = (int) $rows->sum('risk_value_count');
+                    $riskValueSum = (float) $rows->sum('risk_sum');
+                    $riskValueSumSquares = (float) $rows->sum('risk_sum_squares');
 
-                    return new HexAggregate($h3, $count, $categories);
+                    return new HexAggregate(
+                        $h3,
+                        $count,
+                        $categories,
+                        $riskValueCount,
+                        $riskValueSum,
+                        $riskValueSumSquares,
+                    );
                 }
             )
             ->values()
@@ -170,7 +283,10 @@ class H3AggregationService
         int              $resolution,
         ?CarbonInterface $from,
         ?CarbonInterface $to,
-        ?string          $category
+        ?string          $category,
+        ?int             $timeOfDayStart,
+        ?int             $timeOfDayEnd,
+        ?string          $severity,
     ): string {
         $normalizedBbox = array_map(
             static fn(mixed $value): string => number_format((float) $value, 6, '.', ''),
@@ -180,6 +296,9 @@ class H3AggregationService
         $fromKey = $from?->toIso8601String() ?? 'null';
         $toKey = $to?->toIso8601String() ?? 'null';
         $categoryKey = $category ?? 'null';
+        $timeStartKey = $timeOfDayStart !== null ? (string) $timeOfDayStart : 'null';
+        $timeEndKey = $timeOfDayEnd !== null ? (string) $timeOfDayEnd : 'null';
+        $severityKey = $severity ?? 'null';
 
         $rawKey = implode('|', [
             implode(',', $normalizedBbox),
@@ -187,6 +306,9 @@ class H3AggregationService
             $fromKey,
             $toKey,
             $categoryKey,
+            $timeStartKey,
+            $timeEndKey,
+            $severityKey,
         ]);
 
         $version = $this->getCacheVersion();
@@ -464,5 +586,67 @@ class H3AggregationService
         $category = $category !== null ? trim($category) : null;
 
         return $category !== '' ? $category : null;
+    }
+
+    private function normaliseSeverity(?string $severity): ?string
+    {
+        if ($severity === null) {
+            return null;
+        }
+
+        $severity = trim(Str::lower($severity));
+
+        return $severity !== '' ? $severity : null;
+    }
+
+    /**
+     * @return array{0: int|null, 1: int|null}
+     */
+    private function normaliseTimeOfDayRange(?int $start, ?int $end): array
+    {
+        $normalise = static function (?int $value): ?int {
+            if ($value === null) {
+                return null;
+            }
+
+            return max(0, min(23, $value));
+        };
+
+        $start = $normalise($start);
+        $end = $normalise($end);
+
+        if ($start === null && $end === null) {
+            return [null, null];
+        }
+
+        if ($start === null) {
+            $start = $end;
+        }
+
+        if ($end === null) {
+            $end = $start;
+        }
+
+        return [$start, $end];
+    }
+
+    private function normaliseConfidenceLevel(?float $confidenceLevel): float
+    {
+        if ($confidenceLevel === null || ! is_finite($confidenceLevel)) {
+            return 0.95;
+        }
+
+        return max(0.01, min(0.999, $confidenceLevel));
+    }
+
+    private function hourExtractionExpression(Builder $query): string
+    {
+        $driver = $query->getModel()->getConnection()->getDriverName();
+
+        return match ($driver) {
+            'sqlite' => "CAST(strftime('%H', occurred_at) AS INTEGER)",
+            'mysql', 'mariadb' => 'HOUR(occurred_at)',
+            default => 'EXTRACT(HOUR FROM occurred_at)',
+        };
     }
 }

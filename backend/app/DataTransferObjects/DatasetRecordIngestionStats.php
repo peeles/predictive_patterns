@@ -2,7 +2,7 @@
 
 namespace App\DataTransferObjects;
 
-class CrimeIngestionStats
+class DatasetRecordIngestionStats
 {
     public function __construct(
         public int $recordsDetected,

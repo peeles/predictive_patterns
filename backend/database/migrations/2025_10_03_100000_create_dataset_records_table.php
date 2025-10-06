@@ -5,7 +5,7 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration {
   public function up(): void {
-    Schema::create('crimes', function (Blueprint $t) {
+    Schema::create('dataset_records', function (Blueprint $t) {
       $t->uuid('id')->primary();
       $t->string('category', 64)->index();
       $t->timestamp('occurred_at')->index();

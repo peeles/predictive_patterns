@@ -2,9 +2,9 @@
 
 namespace App\Console\Commands;
 
-use App\Exceptions\PoliceCrimeIngestionException;
-use App\Jobs\IngestPoliceCrimes;
-use App\Services\PoliceCrimeIngestionService;
+use App\Exceptions\DatasetRecordIngestionException;
+use App\Jobs\IngestDatasetRecords;
+use App\Services\DatasetRecordIngestionService;
 use Carbon\CarbonImmutable;
 use Illuminate\Bus\Batch;
 use Illuminate\Console\Command;
@@ -15,14 +15,14 @@ use Illuminate\Support\Facades\Log;
 use InvalidArgumentException;
 use Throwable;
 
-class CrimeIngest extends Command
+class DatasetRecordIngest extends Command
 {
     /**
      * The name and signature of the console command.
      *
      * @var string
      */
-    protected $signature = 'crimes:ingest
+    protected $signature = 'dataset-records:ingest
         {months?* : One or more target months in YYYY-MM format}
         {--from= : Inclusive start month in YYYY-MM format}
         {--to= : Inclusive end month in YYYY-MM format}
@@ -36,12 +36,12 @@ class CrimeIngest extends Command
      *
      * @var string
      */
-    protected $description = 'Dispatch ingestion jobs for police crimes data for one or more months';
+    protected $description = 'Dispatch ingestion jobs for dataset records for one or more months';
 
     /**
      * @throws Throwable
      */
-    public function handle(PoliceCrimeIngestionService $service): int
+    public function handle(DatasetRecordIngestionService $service): int
     {
         try {
             $months = $this->resolveMonths();
@@ -71,13 +71,13 @@ class CrimeIngest extends Command
 
         $chunks = array_chunk($months, $chunkSize);
         foreach ($chunks as $index => $chunk) {
-            $jobs = array_map(fn(string $month) => new IngestPoliceCrimes($month, $dryRun), $chunk);
+            $jobs = array_map(fn(string $month) => new IngestDatasetRecords($month, $dryRun), $chunk);
 
             $pendingBatch = Bus::batch($jobs)
-                ->name(sprintf('crime-ingest-%s-%d', now()->format('YmdHis'), $index + 1))
+                ->name(sprintf('dataset-record-ingest-%s-%d', now()->format('YmdHis'), $index + 1))
                 ->allowFailures()
                 ->then(function (Batch $batch) use ($chunk, $dryRun): void {
-                    Log::info('Crime ingestion batch completed', [
+                    Log::info('Dataset record ingestion batch completed', [
                         'batch_id' => $batch->id,
                         'months' => $chunk,
                         'dry_run' => $dryRun,
@@ -85,7 +85,7 @@ class CrimeIngest extends Command
                     ]);
                 })
                 ->catch(function (Batch $batch, Throwable $exception) use ($chunk, $dryRun): void {
-                    Log::error('Crime ingestion batch encountered an error', [
+                    Log::error('Dataset record ingestion batch encountered an error', [
                         'batch_id' => $batch->id,
                         'months' => $chunk,
                         'dry_run' => $dryRun,
@@ -144,7 +144,7 @@ class CrimeIngest extends Command
         return $months;
     }
 
-    private function runSynchronously(PoliceCrimeIngestionService $service, array $months, bool $dryRun): int
+    private function runSynchronously(DatasetRecordIngestionService $service, array $months, bool $dryRun): int
     {
         $this->info(sprintf('Running ingestion synchronously for %d month(s)%s', count($months), $dryRun ? ' (dry-run)' : ''));
 
@@ -159,7 +159,7 @@ class CrimeIngest extends Command
                     $run->records_expected,
                     $run->records_inserted
                 ));
-            } catch (PoliceCrimeIngestionException $exception) {
+            } catch (DatasetRecordIngestionException $exception) {
                 $this->error(sprintf('Ingestion failed for %s: %s', $month, $exception->getMessage()));
 
                 return self::FAILURE;

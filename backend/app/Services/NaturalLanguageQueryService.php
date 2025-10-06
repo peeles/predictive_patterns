@@ -2,7 +2,7 @@
 
 namespace App\Services;
 
-use App\Models\Crime;
+use App\Models\DatasetRecord;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Facades\Cache;
@@ -27,15 +27,15 @@ class NaturalLanguageQueryService
     {
         $normalized = Str::lower(trim($question));
         $timeRange = $this->detectTimeRange($normalized);
-        $crimeType = $this->detectCrimeType($normalized);
+        $datasetType = $this->detectDatasetType($normalized);
         $limit = $this->detectLimit($normalized);
         $resolution = $this->detectResolution($normalized);
 
         if ($this->isHotspotQuestion($normalized)) {
-            return $this->buildHotspotResponse($question, $timeRange, $crimeType, $limit, $resolution);
+            return $this->buildHotspotResponse($question, $timeRange, $datasetType, $limit, $resolution);
         }
 
-        return $this->buildCountResponse($question, $timeRange, $crimeType);
+        return $this->buildCountResponse($question, $timeRange, $datasetType);
     }
 
     /**
@@ -44,7 +44,7 @@ class NaturalLanguageQueryService
     private function buildHotspotResponse(
         string $question,
         array $timeRange,
-        ?string $crimeType,
+        ?string $datasetType,
         int $limit,
         int $resolution
     ): array {
@@ -53,7 +53,11 @@ class NaturalLanguageQueryService
             $resolution,
             $timeRange['from'],
             $timeRange['to'],
-            $crimeType
+            $datasetType,
+            null,
+            null,
+            null,
+            null
         );
 
         $cells = [];
@@ -62,6 +66,7 @@ class NaturalLanguageQueryService
                 'h3' => $h3,
                 'count' => $payload['count'],
                 'categories' => $payload['categories'],
+                'statistics' => $payload['statistics'] ?? [],
             ];
         }
 
@@ -73,7 +78,7 @@ class NaturalLanguageQueryService
             $descriptionParts[] = sprintf('%s (%d incidents)', $cell['h3'], $cell['count']);
         }
 
-        $context = $this->buildContextPhrase($crimeType, $timeRange['label']);
+        $context = $this->buildContextPhrase($datasetType, $timeRange['label']);
         $answer = $cells
             ? sprintf('Top %d H3 cells %s: %s.', count($cells), $context, implode(', ', $descriptionParts))
             : sprintf('No hotspots found %s.', $context);
@@ -82,13 +87,13 @@ class NaturalLanguageQueryService
             'answer' => $answer,
             'query' => [
                 'type' => 'aggregate_hexes',
-                'sql' => 'SELECT h3_res'.$resolution.' AS h3, COUNT(*) AS total FROM crimes WHERE ... GROUP BY h3 ORDER BY total DESC LIMIT '.$limit,
+                'sql' => 'SELECT h3_res'.$resolution.' AS h3, COUNT(*) AS total FROM dataset_records WHERE ... GROUP BY h3 ORDER BY total DESC LIMIT '.$limit,
                 'parameters' => array_filter([
                     'bbox' => self::DEFAULT_BBOX,
                     'resolution' => $resolution,
                     'from' => $timeRange['from']?->toIso8601String(),
                     'to' => $timeRange['to']?->toIso8601String(),
-                    'crime_type' => $crimeType,
+                    'dataset_type' => $datasetType,
                     'limit' => $limit,
                 ]),
             ],
@@ -99,7 +104,7 @@ class NaturalLanguageQueryService
                     'bbox' => self::DEFAULT_BBOX,
                     'from' => $timeRange['from']?->toIso8601String(),
                     'to' => $timeRange['to']?->toIso8601String(),
-                    'crime_type' => $crimeType,
+                    'dataset_type' => $datasetType,
                 ],
             ],
         ];
@@ -108,9 +113,9 @@ class NaturalLanguageQueryService
     /**
      * @param array{from: CarbonInterface|null, to: CarbonInterface|null, label: string} $timeRange
      */
-    private function buildCountResponse(string $question, array $timeRange, ?string $crimeType): array
+    private function buildCountResponse(string $question, array $timeRange, ?string $datasetType): array
     {
-        $query = Crime::query();
+        $query = DatasetRecord::query();
 
         if ($timeRange['from']) {
             $query->where('occurred_at', '>=', $timeRange['from']);
@@ -120,13 +125,13 @@ class NaturalLanguageQueryService
             $query->where('occurred_at', '<=', $timeRange['to']);
         }
 
-        if ($crimeType) {
-            $query->where('category', $crimeType);
+        if ($datasetType) {
+            $query->where('category', $datasetType);
         }
 
         $count = (int) $query->count();
 
-        $context = $this->buildContextPhrase($crimeType, $timeRange['label']);
+        $context = $this->buildContextPhrase($datasetType, $timeRange['label']);
 
         $answer = $count > 0
             ? sprintf('There were %d recorded incidents %s.', $count, $context)
@@ -136,11 +141,11 @@ class NaturalLanguageQueryService
             'answer' => $answer,
             'query' => [
                 'type' => 'count',
-                'sql' => 'SELECT COUNT(*) FROM crimes WHERE ...',
+                'sql' => 'SELECT COUNT(*) FROM dataset_records WHERE ...',
                 'parameters' => array_filter([
                     'from' => $timeRange['from']?->toIso8601String(),
                     'to' => $timeRange['to']?->toIso8601String(),
-                    'crime_type' => $crimeType,
+                    'dataset_type' => $datasetType,
                 ]),
             ],
             'data' => [
@@ -148,7 +153,7 @@ class NaturalLanguageQueryService
                 'filters' => [
                     'from' => $timeRange['from']?->toIso8601String(),
                     'to' => $timeRange['to']?->toIso8601String(),
-                    'crime_type' => $crimeType,
+                    'dataset_type' => $datasetType,
                 ],
             ],
         ];
@@ -243,12 +248,12 @@ class NaturalLanguageQueryService
         ];
     }
 
-    private function detectCrimeType(string $question): ?string
+    private function detectDatasetType(string $question): ?string
     {
         $categories = Cache::remember(
             'nlq:categories',
             now()->addHour(),
-            static fn () => Crime::query()
+            static fn () => DatasetRecord::query()
                 ->select('category')
                 ->distinct()
                 ->pluck('category')
@@ -301,14 +306,14 @@ class NaturalLanguageQueryService
             || str_contains($question, 'risk');
     }
 
-    private function buildContextPhrase(?string $crimeType, string $label): string
+    private function buildContextPhrase(?string $datasetType, string $label): string
     {
         $parts = [];
 
-        if ($crimeType) {
-            $parts[] = strtolower($crimeType).' crimes';
+        if ($datasetType) {
+            $parts[] = strtolower($datasetType).' dataset records';
         } else {
-            $parts[] = 'across all crime categories';
+            $parts[] = 'across all dataset categories';
         }
 
         if ($label) {

@@ -2,13 +2,13 @@
 
 namespace App\Services;
 
-use App\DataTransferObjects\CrimeIngestionStats;
+use App\DataTransferObjects\DatasetRecordIngestionStats;
 use App\DataTransferObjects\DownloadArchive;
-use App\Enums\CrimeIngestionStatus;
-use App\Exceptions\PoliceCrimeIngestionException;
-use App\Models\Crime;
-use App\Models\CrimeIngestionRun;
-use App\Notifications\CrimeIngestionFailed;
+use App\Enums\DatasetRecordIngestionStatus;
+use App\Exceptions\DatasetRecordIngestionException;
+use App\Models\DatasetRecord;
+use App\Models\DatasetRecordIngestionRun;
+use App\Notifications\DatasetRecordIngestionFailed;
 use Carbon\Carbon;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\RequestException;
@@ -21,11 +21,11 @@ use Throwable;
 use ZipArchive;
 
 /**
- * Coordinates downloading and importing crime archives into the relational store.
+ * Coordinates downloading and importing dataset archives into the relational store.
  */
-class PoliceCrimeIngestionService
+class DatasetRecordIngestionService
 {
-    private const ARCHIVE_URL = 'https://data.police.uk/data/archive/%s.zip';
+    private const ARCHIVE_URL = 'https://data.dataset.uk/data/archive/%s.zip';
     private const CHUNK_SIZE = 500;
     private readonly int $chunkSize;
     private readonly int $progressInterval;
@@ -36,10 +36,10 @@ class PoliceCrimeIngestionService
         private readonly H3AggregationService $h3AggregationService,
     )
     {
-        $config = (array)config('crime.ingestion');
+        $config = (array)config('dataset_records.ingestion');
         $this->chunkSize = max(1, (int)($config['chunk_size'] ?? 500));
         $this->progressInterval = max(0, (int)($config['progress_interval'] ?? 5000));
-        $this->tempDirectory = (string)($config['temp_directory'] ?? storage_path('app/crime-ingestion'));
+        $this->tempDirectory = (string)($config['temp_directory'] ?? storage_path('app/dataset-record-ingestion'));
     }
 
     /**
@@ -48,22 +48,22 @@ class PoliceCrimeIngestionService
      * @param string $yearMonth
      * @param bool $dryRun
      *
-     * @return CrimeIngestionRun Number of crimes inserted into the database
+     * @return DatasetRecordIngestionRun Number of datasets inserted into the database
      */
-    public function ingest(string $yearMonth, bool $dryRun = false): CrimeIngestionRun
+    public function ingest(string $yearMonth, bool $dryRun = false): DatasetRecordIngestionRun
     {
         $normalisedMonth = $this->normaliseMonth($yearMonth);
         $url = sprintf(self::ARCHIVE_URL, $normalisedMonth);
 
-        $run = CrimeIngestionRun::query()->create([
+        $run = DatasetRecordIngestionRun::query()->create([
             'month' => $normalisedMonth,
             'dry_run' => $dryRun,
-            'status' => CrimeIngestionStatus::Running,
+            'status' => DatasetRecordIngestionStatus::Running,
             'started_at' => Carbon::now(),
             'archive_url' => $url,
         ]);
 
-        Log::info('Starting police crime ingestion', [
+        Log::info('Starting dataset ingestion', [
             'month' => $normalisedMonth,
             'dry_run' => $dryRun,
             'run_id' => $run->id,
@@ -76,13 +76,13 @@ class PoliceCrimeIngestionService
 
             $run->forceFill([
                 'archive_checksum' => $archive->checksum,
-                'status' => CrimeIngestionStatus::Running,
+                'status' => DatasetRecordIngestionStatus::Running,
             ])->save();
 
             $stats = $this->importArchive($archive, $run, $dryRun);
 
             $run->forceFill([
-                'status' => CrimeIngestionStatus::Completed,
+                'status' => DatasetRecordIngestionStatus::Completed,
                 'records_detected' => $stats->recordsDetected,
                 'records_expected' => $stats->recordsExpected,
                 'records_inserted' => $dryRun ? 0 : $stats->recordsExpected,
@@ -90,7 +90,7 @@ class PoliceCrimeIngestionService
                 'finished_at' => Carbon::now(),
             ])->save();
 
-            Log::info('Completed police crime ingestion', [
+            Log::info('Completed dataset ingestion', [
                 'month' => $normalisedMonth,
                 'dry_run' => $dryRun,
                 'run_id' => $run->id,
@@ -106,12 +106,12 @@ class PoliceCrimeIngestionService
             return $run->refresh();
         } catch (Throwable $e) {
             $run->forceFill([
-                'status' => CrimeIngestionStatus::Failed,
+                'status' => DatasetRecordIngestionStatus::Failed,
                 'error_message' => $e->getMessage(),
                 'finished_at' => Carbon::now(),
             ])->save();
 
-            Log::error('Failed to ingest police crimes', [
+            Log::error('Failed to ingest dataset records', [
                 'month' => $normalisedMonth,
                 'dry_run' => $dryRun,
                 'run_id' => $run->id,
@@ -120,12 +120,12 @@ class PoliceCrimeIngestionService
 
             $this->notifyFailure($run->refresh(), $e);
 
-            if ($e instanceof PoliceCrimeIngestionException) {
+            if ($e instanceof DatasetRecordIngestionException) {
                 throw $e;
             }
 
-            throw new PoliceCrimeIngestionException(
-                sprintf('Crime ingestion for %s failed: %s', $normalisedMonth, $e->getMessage()),
+            throw new DatasetRecordIngestionException(
+                sprintf('Dataset record ingestion for %s failed: %s', $normalisedMonth, $e->getMessage()),
                 previous: $e,
             );
         } finally {
@@ -134,7 +134,7 @@ class PoliceCrimeIngestionService
     }
 
     /**
-     * Fetch a crime archive for the given month and persist it to a temp file.
+     * Fetch a dataset archive for the given month and persist it to a temp file.
      *
      * @param string $yearMonth
      * @param string $url
@@ -201,7 +201,7 @@ class PoliceCrimeIngestionService
         }
 
         if (!in_array($response->status(), [200, 206], true)) {
-            throw new RuntimeException(sprintf('Unable to download police archive (%d): %s', $response->status(), $url));
+            throw new RuntimeException(sprintf('Unable to download dataset archive (%d): %s', $response->status(), $url));
         }
 
         $status = $response->status();
@@ -215,7 +215,7 @@ class PoliceCrimeIngestionService
 
         $handle = fopen($partialPath, $existingBytes > 0 ? 'ab' : 'wb');
         if ($handle === false) {
-            throw new RuntimeException('Unable to open temporary file for police archive');
+            throw new RuntimeException('Unable to open temporary file for dataset archive');
         }
 
         while (!$stream->eof()) {
@@ -226,7 +226,7 @@ class PoliceCrimeIngestionService
 
             if (fwrite($handle, $chunk) === false) {
                 fclose($handle);
-                throw new RuntimeException('Unable to write police archive to temporary file');
+                throw new RuntimeException('Unable to write dataset archive to temporary file');
             }
         }
 
@@ -266,14 +266,14 @@ class PoliceCrimeIngestionService
         }
         $zip->close();
 
-        $finalPath = tempnam($directory, 'police_' . $this->sanitiseMonth($yearMonth) . '_');
+        $finalPath = tempnam($directory, 'dataset_' . $this->sanitiseMonth($yearMonth) . '_');
         if ($finalPath === false) {
-            throw new RuntimeException('Unable to allocate final police archive path');
+            throw new RuntimeException('Unable to allocate final dataset archive path');
         }
 
         if (!rename($partialPath, $finalPath)) {
             if (!copy($partialPath, $finalPath)) {
-                throw new RuntimeException('Unable to finalise police archive download');
+                throw new RuntimeException('Unable to finalise dataset archive download');
             }
             $this->safeUnlink($partialPath);
         }
@@ -283,11 +283,11 @@ class PoliceCrimeIngestionService
         return new DownloadArchive($finalPath, $downloadedSize, $sha256, $url);
     }
 
-    private function importArchive(DownloadArchive $archive, CrimeIngestionRun $run, bool $dryRun): CrimeIngestionStats
+    private function importArchive(DownloadArchive $archive, DatasetRecordIngestionRun $run, bool $dryRun): DatasetRecordIngestionStats
     {
         $zip = new ZipArchive();
         if ($zip->open($archive->path) !== true) {
-            throw new RuntimeException('Unable to open police archive: ' . $archive->path);
+            throw new RuntimeException('Unable to open dataset archive: ' . $archive->path);
         }
 
         $toH3 = [$this->h3IndexService, 'toH3'];
@@ -315,7 +315,7 @@ class PoliceCrimeIngestionService
 
                 $stream = $zip->getStream($name);
                 if ($stream === false) {
-                    Log::warning('Unable to read CSV from police archive', [
+                    Log::warning('Unable to read CSV from dataset archive', [
                         'file' => $name,
                         'run_id' => $run->id,
                         'month' => $run->month,
@@ -384,7 +384,7 @@ class PoliceCrimeIngestionService
             );
         }
 
-        return new CrimeIngestionStats($detected, $insertable, $existing, $duplicates, $invalid);
+        return new DatasetRecordIngestionStats($detected, $insertable, $existing, $duplicates, $invalid);
     }
 
     /**
@@ -427,7 +427,7 @@ class PoliceCrimeIngestionService
     }
 
     /**
-     * Transform a CSV row into an insertable payload for the crimes table.
+     * Transform a CSV row into an insertable payload for the datasets table.
      *
      * @param array<string, mixed> $row
      * @param callable $toH3
@@ -469,10 +469,10 @@ class PoliceCrimeIngestionService
             return null;
         }
 
-        $category = (string) ($normalised['crime_type'] ?? $normalised['category'] ?? '');
+        $category = (string) ($normalised['dataset_type'] ?? $normalised['category'] ?? '');
         $category = $category !== '' ? $category : 'unknown';
 
-        $identifier = trim((string) ($normalised['crime_id'] ?? $normalised['id'] ?? ''));
+        $identifier = trim((string) ($normalised['dataset_id'] ?? $normalised['id'] ?? ''));
         if ($identifier === '') {
             $location = (string) ($normalised['location'] ?? '');
             $identifier = $this->deterministicUuid(
@@ -560,7 +560,7 @@ class PoliceCrimeIngestionService
     }
 
     /**
-     * Trim and normalise the CSV header row from the police archive.
+     * Trim and normalise the CSV header row from the dataset archive.
      *
      * @param array<int, string|null> $headers
      * @return array<int, string>
@@ -595,7 +595,7 @@ class PoliceCrimeIngestionService
     }
 
     /**
-     * Insert the accumulated crime rows, skipping any that already exist.
+     * Insert the accumulated dataset rows, skipping any that already exist.
      *
      * @param array<int, array<string, mixed>> $buffer
      * @return array{0:int,1:int,2:int} Array containing processed rows, expected insertions, and existing records
@@ -608,7 +608,7 @@ class PoliceCrimeIngestionService
         }
 
         $ids = array_column($buffer, 'id');
-        $existing = Crime::query()->whereIn('id', $ids)->pluck('id')->all();
+        $existing = DatasetRecord::query()->whereIn('id', $ids)->pluck('id')->all();
 
         if ($existing) {
             $existing = array_flip($existing);
@@ -619,7 +619,7 @@ class PoliceCrimeIngestionService
         $existingCount = $processed - $insertable;
 
         if (!$dryRun && $insertable > 0) {
-            Crime::query()->insert($buffer);
+            DatasetRecord::query()->insert($buffer);
             $this->h3AggregationService->invalidateAggregatesForRecords($buffer);
         }
 
@@ -632,7 +632,7 @@ class PoliceCrimeIngestionService
     {
         if (!is_dir($this->tempDirectory)) {
             if (!mkdir($concurrentDirectory = $this->tempDirectory, 0755, true) && !is_dir($concurrentDirectory)) {
-                throw new RuntimeException('Unable to prepare directory for police archive downloads');
+                throw new RuntimeException('Unable to prepare directory for dataset archive downloads');
             }
         }
 
@@ -647,12 +647,12 @@ class PoliceCrimeIngestionService
     private function normaliseMonth(string $yearMonth): string
     {
         if (!preg_match('/^\d{4}-\d{2}$/', $yearMonth)) {
-            throw new PoliceCrimeIngestionException('The supplied month must be in YYYY-MM format.');
+            throw new DatasetRecordIngestionException('The supplied month must be in YYYY-MM format.');
         }
 
         $date = Carbon::createFromFormat('Y-m', $yearMonth);
         if ($date === false) {
-            throw new PoliceCrimeIngestionException('Unable to parse the supplied month value.');
+            throw new DatasetRecordIngestionException('Unable to parse the supplied month value.');
         }
 
         return $date->format('Y-m');
@@ -680,10 +680,10 @@ class PoliceCrimeIngestionService
         });
     }
 
-    private function missingArchiveException(string $yearMonth, ?Throwable $previous = null): PoliceCrimeIngestionException
+    private function missingArchiveException(string $yearMonth, ?Throwable $previous = null): DatasetRecordIngestionException
     {
-        return new PoliceCrimeIngestionException(
-            sprintf('No police crime archive is available for %s yet.', $yearMonth),
+        return new DatasetRecordIngestionException(
+            sprintf('No dataset archive is available for %s yet.', $yearMonth),
             previous: $previous,
         );
     }
@@ -751,10 +751,10 @@ class PoliceCrimeIngestionService
         return null;
     }
 
-    private function notifyFailure(CrimeIngestionRun $run, Throwable $exception): void
+    private function notifyFailure(DatasetRecordIngestionRun $run, Throwable $exception): void
     {
-        $mailRecipients = array_filter((array)(config('crime.ingestion.notifications.mail') ?? []));
-        $slackWebhook = config('crime.ingestion.notifications.slack_webhook');
+        $mailRecipients = array_filter((array)(config('dataset_records.ingestion.notifications.mail') ?? []));
+        $slackWebhook = config('dataset_records.ingestion.notifications.slack_webhook');
 
         if (empty($mailRecipients) && !$slackWebhook) {
             return;
@@ -764,10 +764,10 @@ class PoliceCrimeIngestionService
             foreach ($mailRecipients as $recipient) {
                 try {
                     Notification::route('mail', $recipient)->notify(
-                        new CrimeIngestionFailed($run, $exception, ['mail'])
+                        new DatasetRecordIngestionFailed($run, $exception, ['mail'])
                     );
                 } catch (Throwable $notificationError) {
-                    Log::warning('Unable to send crime ingestion failure mail notification', [
+                    Log::warning('Unable to send dataset ingestion failure mail notification', [
                         'run_id' => $run->id,
                         'recipient' => $recipient,
                         'error' => $notificationError->getMessage(),
@@ -779,10 +779,10 @@ class PoliceCrimeIngestionService
         if ($slackWebhook) {
             try {
                 Notification::route('slack', $slackWebhook)->notify(
-                    new CrimeIngestionFailed($run, $exception, ['slack'])
+                    new DatasetRecordIngestionFailed($run, $exception, ['slack'])
                 );
             } catch (Throwable $notificationError) {
-                Log::warning('Unable to send crime ingestion failure Slack notification', [
+                Log::warning('Unable to send dataset ingestion failure Slack notification', [
                     'run_id' => $run->id,
                     'webhook' => $slackWebhook,
                     'error' => $notificationError->getMessage(),
@@ -792,7 +792,7 @@ class PoliceCrimeIngestionService
     }
 
     private function maybeLogProgress(
-        CrimeIngestionRun $run,
+        DatasetRecordIngestionRun $run,
         bool $dryRun,
         int $detected,
         int $expected,
@@ -811,7 +811,7 @@ class PoliceCrimeIngestionService
             return;
         }
 
-        Log::info('Police crime ingestion progress', [
+        Log::info('Dataset ingestion progress', [
             'run_id' => $run->id,
             'month' => $run->month,
             'dry_run' => $dryRun,

@@ -2,7 +2,7 @@
 
 namespace App\Http\Resources;
 
-use App\Enums\CrimeIngestionStatus;
+use App\Enums\DatasetRecordIngestionStatus;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -19,7 +19,7 @@ class DataIngestionResource extends JsonResource
             'id' => $this->id,
             'month' => $this->month,
             'dry_request' => (bool)$this->dry_request,
-            'status' => $this->status instanceof CrimeIngestionStatus
+            'status' => $this->status instanceof DatasetRecordIngestionStatus
                 ? $this->status->value
                 : (string)$this->status,
             'records_detected' => $this->records_detected,
