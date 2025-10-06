@@ -901,7 +901,7 @@ function registerBroadcastConnectionListener(store) {
     }
 
     const handler = (state) => {
-        const current = typeof state?.state === 'string' ? state.state : null
+        const current = typeof state?.state === 'string' ? state.state.toLowerCase() : null
         if (!current) {
             return
         }
