@@ -3,11 +3,13 @@
 namespace App\Services;
 
 use App\Enums\PredictionStatus;
+use App\Events\PredictionStatusUpdated;
 use App\Jobs\GenerateHeatmapJob;
 use App\Models\Dataset;
 use App\Models\Prediction;
 use App\Models\PredictiveModel;
 use App\Models\User;
+use App\Support\Broadcasting\BroadcastDispatcher;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Contracts\Bus\Dispatcher;
 use Illuminate\Support\Facades\DB;
@@ -42,6 +44,19 @@ class PredictionService
             }
 
             $prediction->save();
+
+            $prediction->refresh();
+
+            $event = PredictionStatusUpdated::fromPrediction(
+                $prediction,
+                0.0,
+                'Prediction queued. Awaiting available worker.'
+            );
+
+            BroadcastDispatcher::dispatch($event, [
+                'prediction_id' => $event->predictionId,
+                'status' => $event->status,
+            ]);
 
             $this->dispatcher->dispatch(new GenerateHeatmapJob($prediction->id, $parameters, $generateTiles));
 

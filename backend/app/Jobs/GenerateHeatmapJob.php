@@ -4,10 +4,12 @@ namespace App\Jobs;
 
 use App\Enums\PredictionOutputFormat;
 use App\Enums\PredictionStatus;
+use App\Events\PredictionStatusUpdated;
 use App\Models\Dataset;
 use App\Models\Prediction;
 use App\Models\PredictiveModel;
 use App\Support\Phpml\ImputerFactory;
+use App\Support\Broadcasting\BroadcastDispatcher;
 use App\Support\TimestampParser;
 use Carbon\CarbonImmutable;
 use Illuminate\Bus\Queueable;
@@ -56,6 +58,12 @@ class GenerateHeatmapJob implements ShouldQueue
             'error_message' => null,
         ])->save();
 
+        $this->broadcastStatus(
+            $prediction,
+            0.1,
+            'Restoring trained model and preparing forecast inputs…'
+        );
+
         try {
             $artifact = $this->loadLatestArtifact($prediction);
             $classifier = $this->restoreClassifier($artifact);
@@ -77,11 +85,24 @@ class GenerateHeatmapJob implements ShouldQueue
             }
 
             $scored = $this->scoreEntries($filtered, $artifact, $classifier, $preprocessing);
+
+            $this->broadcastStatus(
+                $prediction,
+                0.45,
+                'Scoring dataset entries with the trained model…'
+            );
+
             $summary = $this->buildSummary($scored, $artifact);
             $heatmap = $this->aggregateHeatmap($scored);
             $topFeatures = $this->rankFeatureInfluences($artifact);
 
             $this->persistShapValues($prediction, $topFeatures);
+
+            $this->broadcastStatus(
+                $prediction,
+                0.75,
+                'Persisting forecast artefacts…'
+            );
 
             $payload = [
                 'prediction_id' => $prediction->id,
@@ -116,6 +137,12 @@ class GenerateHeatmapJob implements ShouldQueue
                 'status' => PredictionStatus::Completed,
                 'finished_at' => now(),
             ])->save();
+
+            $this->broadcastStatus(
+                $prediction,
+                1.0,
+                'Prediction complete.'
+            );
         } catch (Throwable $exception) {
             Log::error('Failed to generate prediction output', [
                 'prediction_id' => $this->predictionId,
@@ -128,8 +155,22 @@ class GenerateHeatmapJob implements ShouldQueue
                 'finished_at' => now(),
             ])->save();
 
+            $this->broadcastStatus($prediction, null, $exception->getMessage());
+
             throw $exception;
         }
+    }
+
+    private function broadcastStatus(Prediction $prediction, ?float $progress = null, ?string $message = null): void
+    {
+        $prediction->refresh();
+
+        $event = PredictionStatusUpdated::fromPrediction($prediction, $progress, $message);
+
+        BroadcastDispatcher::dispatch($event, [
+            'prediction_id' => $event->predictionId,
+            'status' => $event->status,
+        ]);
     }
 
     /**

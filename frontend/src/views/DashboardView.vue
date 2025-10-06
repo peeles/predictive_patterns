@@ -16,5 +16,5 @@
 <script setup>
 import NLQConsole from '../components/NLQConsole.vue'
 import RecentConfigurationCard from '../components/predict/RecentConfigurationCard.vue'
-import PageHeader from "../components/common/PageHeader.vue";
+import PageHeader from '../components/common/PageHeader.vue'
 </script>

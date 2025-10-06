@@ -31,6 +31,12 @@
                         aria-live="polite"
                         role="region"
                     >
+                        <PredictionStatusBar
+                            :status="activePredictionStatus"
+                            :progress="activePredictionProgress"
+                            :message="activePredictionMessage"
+                            :updated-at="activePredictionUpdatedAt"
+                        />
                         <div class="relative flex flex-col flex-[1_0_28rem] md:flex-[1_0_34rem]">
                             <Suspense>
                                 <template #default>
@@ -109,7 +115,8 @@ import { useAuthStore } from '../stores/auth.js'
 import PredictGenerateModal from '../components/predict/PredictGenerateModal.vue'
 import BaseTabs from '../components/common/BaseTabs.vue'
 import BaseTabPanel from '../components/common/BaseTabPanel.vue'
-import PageHeader from "../components/common/PageHeader.vue";
+import PageHeader from '../components/common/PageHeader.vue'
+import PredictionStatusBar from '../components/predict/PredictionStatusBar.vue'
 
 const MapView = defineAsyncComponent(() => import('../components/map/MapView.vue'))
 
@@ -147,7 +154,44 @@ const predictionSummary = computed(() => ({
     confidence: predictionStore.summary?.confidence ?? 'Unknown',
 }))
 
+const realtimeStatus = computed(() => predictionStore.realtimeStatus ?? null)
+
+const activePredictionStatus = computed(() => {
+    return predictionStore.currentPrediction?.status ?? realtimeStatus.value?.status ?? null
+})
+
+const activePredictionProgress = computed(() => {
+    const currentProgress = predictionStore.currentPrediction?.progress
+    if (Number.isFinite(currentProgress)) {
+        return currentProgress
+    }
+
+    const realtimeProgress = realtimeStatus.value?.progress
+    if (typeof realtimeProgress === 'number' && Number.isFinite(realtimeProgress)) {
+        return Math.min(100, Math.max(0, Math.round(realtimeProgress * 100)))
+    }
+
+    return null
+})
+
+const activePredictionMessage = computed(() => {
+    return (
+        predictionStore.currentPrediction?.progressMessage
+        ?? realtimeStatus.value?.message
+        ?? null
+    )
+})
+
+const activePredictionUpdatedAt = computed(() => {
+    return (
+        realtimeStatus.value?.updatedAt
+        ?? predictionStore.currentPrediction?.finishedAt
+        ?? predictionStore.currentPrediction?.startedAt
+        ?? null
+    )
+})
+
 function openWizard() {
-    wizardOpen.value = true;
+    wizardOpen.value = true
 }
 </script>

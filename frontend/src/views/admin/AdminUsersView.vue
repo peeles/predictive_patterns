@@ -64,7 +64,7 @@ import UserRoleModal from '../../components/users/UserRoleModal.vue'
 import UserResetPasswordModal from '../../components/users/UserResetPasswordModal.vue'
 import UserTable from '../../components/users/UserTable.vue'
 import { useUserStore } from '../../stores/user'
-import PageHeader from "../../components/common/PageHeader.vue";
+import PageHeader from '../../components/common/PageHeader.vue'
 
 const userStore = useUserStore()
 const { users, loading, roles, actionState, error } = storeToRefs(userStore)
