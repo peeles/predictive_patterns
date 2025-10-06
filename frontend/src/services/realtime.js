@@ -102,9 +102,10 @@ export function subscribeToChannel(channelName, options = {}) {
 
     if (events.length && typeof options.onEvent === 'function') {
         for (const eventName of events) {
+            const qualifiedEventName = eventName.startsWith('.') ? eventName : `.${eventName}`
             const handler = (payload) => options.onEvent(eventName, payload)
-            channel.listen(eventName, handler)
-            listeners.push({ eventName, handler })
+            channel.listen(qualifiedEventName, handler)
+            listeners.push({ eventName: qualifiedEventName, handler })
         }
     }
 
