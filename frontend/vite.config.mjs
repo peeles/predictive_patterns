@@ -32,5 +32,9 @@ export default defineConfig({
     globals: true,
     setupFiles: ['./tests/setup.js'],
     restoreMocks: true,
+    coverage: {
+      provider: 'v8',
+      reports: ['text', 'lcov'],
+    },
   },
 })

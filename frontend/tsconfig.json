@@ -1,0 +1,25 @@
+{
+  "extends": "@vue/tsconfig/tsconfig.json",
+  "compilerOptions": {
+    "composite": true,
+    "allowJs": true,
+    "checkJs": false,
+    "resolveJsonModule": true,
+    "moduleResolution": "bundler",
+    "types": [
+      "vitest",
+      "vite/client",
+      "@playwright/test"
+    ]
+  },
+  "include": [
+    "env.d.ts",
+    "src/**/*",
+    "tests/**/*",
+    "playwright.config.ts"
+  ],
+  "exclude": [
+    "dist",
+    "node_modules"
+  ]
+}

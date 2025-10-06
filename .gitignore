@@ -1,5 +1,7 @@
 /.idea/
 /frontend/node_modules/
+/frontend/playwright-report/
+/frontend/test-results/
 /backend/vendor/
 /.DS_Store
 /logs/

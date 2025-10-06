@@ -3,7 +3,10 @@
     "name": "laravel/laravel",
     "type": "project",
     "description": "The skeleton application for the Laravel framework.",
-    "keywords": ["laravel", "framework"],
+    "keywords": [
+        "laravel",
+        "framework"
+    ],
     "license": "MIT",
     "require": {
         "php": "^8.2",
@@ -20,7 +23,12 @@
         "laravel/sail": "^1.41",
         "mockery/mockery": "^1.6",
         "nunomaduro/collision": "^8.6",
-        "phpunit/phpunit": "^11.5.3"
+        "nunomaduro/larastan": "^2.9",
+        "pestphp/pest": "^3.3",
+        "pestphp/pest-plugin-laravel": "^2.5",
+        "phpunit/phpunit": "^11.5.3",
+        "rector/rector": "^1.4",
+        "rector/rector-laravel": "^0.21"
     },
     "autoload": {
         "psr-4": {
@@ -52,6 +60,21 @@
         ],
         "pre-package-uninstall": [
             "Illuminate\\Foundation\\ComposerScripts::prePackageUninstall"
+        ],
+        "analyse": [
+            "@php ./vendor/bin/phpstan analyse --configuration=phpstan.neon"
+        ],
+        "lint": [
+            "@php ./vendor/bin/pint --test"
+        ],
+        "lint:fix": [
+            "@php ./vendor/bin/pint"
+        ],
+        "rector": [
+            "@php ./vendor/bin/rector process --dry-run"
+        ],
+        "test:pest": [
+            "@php ./vendor/bin/pest --coverage"
         ],
         "dev": [
             "Composer\\Config::disableProcessTimeout",
