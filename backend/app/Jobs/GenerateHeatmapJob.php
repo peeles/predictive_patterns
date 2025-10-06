@@ -9,6 +9,7 @@ use App\Models\Dataset;
 use App\Models\Prediction;
 use App\Models\PredictiveModel;
 use App\Support\Phpml\ImputerFactory;
+use App\Support\ProbabilityScoreExtractor;
 use App\Support\Broadcasting\BroadcastDispatcher;
 use App\Support\TimestampParser;
 use Carbon\CarbonImmutable;
@@ -636,16 +637,18 @@ class GenerateHeatmapJob implements ShouldQueue
         $normalizer->transform($standardized);
 
         if (method_exists($classifier, 'predictProbabilities')) {
-            $probabilities = $classifier->predictProbabilities($standardized);
+            $probabilities = ProbabilityScoreExtractor::extractList((array) $classifier->predictProbabilities($standardized));
         } else {
             $predictions = $classifier->predict($standardized);
-            $probabilities = array_map(static fn (int $value): float => $value >= 1 ? 1.0 : 0.0, $predictions);
+            $probabilities = ProbabilityScoreExtractor::extractList(
+                array_map(static fn (int $value): float => $value >= 1 ? 1.0 : 0.0, $predictions)
+            );
         }
 
         $scored = [];
 
         foreach ($metadata as $index => $meta) {
-            $score = (float) ($probabilities[$index] ?? 0.0);
+            $score = $probabilities[$index] ?? 0.0;
 
             $scored[] = [
                 'timestamp' => $meta['timestamp'],

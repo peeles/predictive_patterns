@@ -13,6 +13,7 @@ use App\Models\PredictiveModel;
 use App\Models\TrainingRun;
 use App\Services\ModelTrainingService;
 use App\Support\Phpml\ImputerFactory;
+use App\Support\ProbabilityScoreExtractor;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
@@ -605,12 +606,14 @@ class GenerateHeatmapJobTest extends TestCase
         $normalizer->transform($standardized);
 
         if (method_exists($classifier, 'predictProbabilities')) {
-            return $classifier->predictProbabilities($standardized);
+            return ProbabilityScoreExtractor::extractList((array) $classifier->predictProbabilities($standardized));
         }
 
         $predictions = $classifier->predict($standardized);
 
-        return array_map(static fn (int $value): float => $value >= 1 ? 1.0 : 0.0, $predictions);
+        return ProbabilityScoreExtractor::extractList(
+            array_map(static fn (int $value): float => $value >= 1 ? 1.0 : 0.0, $predictions)
+        );
     }
 
     /**
