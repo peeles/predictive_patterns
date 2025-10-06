@@ -39,6 +39,9 @@ export const useDatasetStore = defineStore('dataset', {
         uploadError: '',
         realtimeStatus: null,
         realtimeSubscription: null,
+        realtimePollTimer: null,
+        realtimePollDatasetId: null,
+        realtimePollInFlight: false,
         step: 1,
         form: {
             name: '',
@@ -377,6 +380,11 @@ export const useDatasetStore = defineStore('dataset', {
             }
 
             this.stopRealtimeTracking()
+            this.startStatusPolling(datasetId)
+
+            if (this.uploadState === 'completed' || this.uploadState === 'error') {
+                return
+            }
 
             try {
                 const channelName = `datasets.${datasetId}.status`
@@ -400,13 +408,12 @@ export const useDatasetStore = defineStore('dataset', {
         },
         stopRealtimeTracking() {
             const subscription = this.realtimeSubscription
-            if (!subscription) {
-                return
+            if (subscription) {
+                unsubscribeFromChannel(subscription)
             }
 
-            unsubscribeFromChannel(subscription)
-
             this.realtimeSubscription = null
+            this.stopStatusPolling()
         },
         handleRealtimeStatus(payload = {}) {
             const status = typeof payload?.status === 'string' ? payload.status : null
@@ -434,6 +441,85 @@ export const useDatasetStore = defineStore('dataset', {
             } else if (status && status !== 'pending') {
                 this.uploadState = 'processing'
             }
+        },
+        startStatusPolling(datasetId) {
+            if (!datasetId) {
+                return
+            }
+
+            this.stopStatusPolling()
+            this.realtimePollDatasetId = datasetId
+
+            const poll = async () => {
+                if (!this.realtimePollDatasetId || this.realtimePollInFlight) {
+                    return
+                }
+
+                this.realtimePollInFlight = true
+
+                try {
+                    const { data } = await apiClient.get(`/datasets/${this.realtimePollDatasetId}`)
+                    const dataset = data?.data ?? data
+
+                    if (!dataset || typeof dataset !== 'object') {
+                        return
+                    }
+
+                    const status = typeof dataset.status === 'string' ? dataset.status : null
+                    const metadata = dataset.metadata && typeof dataset.metadata === 'object' ? dataset.metadata : null
+                    const ingestError = metadata && typeof metadata.ingest_error === 'string' ? metadata.ingest_error : null
+                    const updatedAt = typeof dataset.updated_at === 'string'
+                        ? dataset.updated_at
+                        : new Date().toISOString()
+
+                    let progress = this.realtimeStatus?.progress ?? null
+                    if (status === 'ready') {
+                        progress = 1
+                    } else if (status === 'failed') {
+                        progress = 0
+                    }
+
+                    this.realtimeStatus = {
+                        status,
+                        progress,
+                        updatedAt,
+                        message: ingestError,
+                    }
+
+                    if (status === 'ready') {
+                        this.uploadProgress = 100
+                        this.uploadState = 'completed'
+                        this.stopRealtimeTracking()
+                    } else if (status === 'failed') {
+                        this.uploadState = 'error'
+                        this.uploadError = ingestError || this.uploadError || 'Dataset ingestion failed.'
+                        this.stopRealtimeTracking()
+                    } else if (status === 'processing' || status === 'pending') {
+                        this.uploadState = 'processing'
+                    }
+                } catch (error) {
+                    console.warn('Dataset status polling failed', error)
+                } finally {
+                    this.realtimePollInFlight = false
+                }
+            }
+
+            poll()
+
+            if (this.uploadState === 'completed' || this.uploadState === 'error') {
+                return
+            }
+
+            this.realtimePollTimer = setInterval(poll, 5000)
+        },
+        stopStatusPolling() {
+            if (this.realtimePollTimer) {
+                clearInterval(this.realtimePollTimer)
+            }
+
+            this.realtimePollTimer = null
+            this.realtimePollDatasetId = null
+            this.realtimePollInFlight = false
         },
     },
 })
