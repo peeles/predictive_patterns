@@ -57,6 +57,46 @@ class DatasetApiTest extends TestCase
         ]);
     }
 
+    public function test_dataset_ingest_finalises_when_queue_disabled(): void
+    {
+        Storage::fake('local');
+        Cache::flush();
+        Bus::fake();
+
+        config()->set('queue.default', 'null');
+
+        try {
+            $csv = "Type,Date\nEntry,2024-04-01T00:00:00+00:00\n";
+            $file = UploadedFile::fake()->createWithContent('dataset.csv', $csv, 'text/csv');
+            $tokens = $this->issueTokensForRole(Role::Admin);
+
+            $response = $this->withHeader('Authorization', 'Bearer ' . $tokens['accessToken'])
+                ->postJson('/api/v1/datasets/ingest', [
+                    'name' => 'Queue Disabled Dataset',
+                    'description' => 'Processes synchronously',
+                    'source_type' => 'file',
+                    'file' => $file,
+                ]);
+
+            $response->assertCreated();
+            $response->assertJson(['success' => true]);
+
+            $data = $response->json('data');
+
+            $this->assertSame(DatasetStatus::Ready->value, $data['status']);
+            $this->assertSame(1, $data['metadata']['row_count']);
+
+            Bus::assertNothingDispatched();
+
+            $this->assertDatabaseHas('datasets', [
+                'id' => $data['id'],
+                'status' => DatasetStatus::Ready->value,
+            ]);
+        } finally {
+            config()->set('queue.default', 'sync');
+        }
+    }
+
     public function test_dataset_ingest_accepts_file_upload(): void
     {
         Storage::fake('local');
