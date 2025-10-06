@@ -164,7 +164,7 @@
         <section aria-labelledby="ingest-history-heading" class="rounded-xl border border-stone-200 bg-white shadow-sm">
             <header class="flex flex-wrap items-center justify-between gap-4 border-b border-stone-200 px-6 py-4">
                 <div>
-                    <h2 id="ingest-history-heading" class="text-lg font-semibold text-stone-900">Crime ingestion runs</h2>
+                    <h2 id="ingest-history-heading" class="text-lg font-semibold text-stone-900">Dataset record ingestion runs</h2>
                     <p class="text-sm text-stone-600">Monitor the most recent automated ingests and troubleshoot failures.</p>
                 </div>
                 <div class="flex flex-wrap items-center gap-3 text-sm text-stone-600">

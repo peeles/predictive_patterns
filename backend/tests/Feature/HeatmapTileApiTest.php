@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature;
 
 use App\Enums\Role;
-use App\Models\Crime;
+use App\Models\DatasetRecord;
 use App\Services\H3AggregationService;
 use App\Services\H3GeometryService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -22,7 +22,7 @@ class HeatmapTileApiTest extends TestCase
     {
         Cache::flush();
 
-        Crime::factory()->create([
+        DatasetRecord::factory()->create([
             'category' => 'burglary',
             'occurred_at' => Carbon::parse('2024-03-01 10:00:00'),
             'lat' => 53.4,
@@ -30,7 +30,7 @@ class HeatmapTileApiTest extends TestCase
             'h3_res7' => '87283080dffffff',
         ]);
 
-        Crime::factory()->create([
+        DatasetRecord::factory()->create([
             'category' => 'burglary',
             'occurred_at' => Carbon::parse('2024-03-01 18:00:00'),
             'lat' => 53.405,
@@ -39,7 +39,7 @@ class HeatmapTileApiTest extends TestCase
         ]);
 
         // Outside the requested horizon window and should be excluded
-        Crime::factory()->create([
+        DatasetRecord::factory()->create([
             'category' => 'burglary',
             'occurred_at' => Carbon::parse('2024-03-04 09:00:00'),
             'lat' => 53.401,
@@ -48,7 +48,7 @@ class HeatmapTileApiTest extends TestCase
         ]);
 
         // Outside the tile bounds entirely
-        Crime::factory()->create([
+        DatasetRecord::factory()->create([
             'category' => 'theft',
             'occurred_at' => Carbon::parse('2024-03-01 11:00:00'),
             'lat' => 51.5,
@@ -124,7 +124,7 @@ class HeatmapTileApiTest extends TestCase
             ->atLeast()->once();
         $this->app->instance(H3GeometryService::class, $mock);
 
-        Crime::factory()->create([
+        DatasetRecord::factory()->create([
             'category' => 'burglary',
             'occurred_at' => Carbon::parse('2024-03-01 10:00:00'),
             'lat' => 53.4,
@@ -141,7 +141,7 @@ class HeatmapTileApiTest extends TestCase
             ->assertJsonPath('success', true)
             ->assertJsonPath('data.cells.0.count', 1);
 
-        Crime::factory()->create([
+        DatasetRecord::factory()->create([
             'category' => 'burglary',
             'occurred_at' => Carbon::parse('2024-03-01 12:00:00'),
             'lat' => 53.401,

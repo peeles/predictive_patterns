@@ -2,7 +2,7 @@
 
 namespace App\Models;
 
-use App\Enums\CrimeIngestionStatus;
+use App\Enums\DatasetRecordIngestionStatus;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
@@ -22,11 +22,11 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $started_at
  * @property Carbon|null $finished_at
  */
-class CrimeIngestionRun extends Model
+class DatasetRecordIngestionRun extends Model
 {
     use HasFactory;
 
-    protected $table = 'crime_ingestion_runs';
+    protected $table = 'dataset_record_ingestion_runs';
 
     /**
      * @var array<int, string>
@@ -53,6 +53,6 @@ class CrimeIngestionRun extends Model
         'dry_run' => 'boolean',
         'started_at' => 'datetime',
         'finished_at' => 'datetime',
-        'status' => CrimeIngestionStatus::class,
+        'status' => DatasetRecordIngestionStatus::class,
     ];
 }

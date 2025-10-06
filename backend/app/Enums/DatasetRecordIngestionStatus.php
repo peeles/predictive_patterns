@@ -2,7 +2,7 @@
 
 namespace App\Enums;
 
-enum CrimeIngestionStatus: string
+enum DatasetRecordIngestionStatus: string
 {
     case Pending = 'pending';
     case Running = 'running';

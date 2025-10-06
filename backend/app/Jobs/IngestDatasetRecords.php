@@ -8,11 +8,11 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use App\Services\PoliceCrimeIngestionService;
+use App\Services\DatasetRecordIngestionService;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
-class IngestPoliceCrimes implements ShouldQueue
+class IngestDatasetRecords implements ShouldQueue
 {
     use Batchable;
     use Dispatchable;
@@ -23,18 +23,18 @@ class IngestPoliceCrimes implements ShouldQueue
     public function __construct(public string $yearMonth, public bool $dryRun = false) {}
 
     /**
-     * @param PoliceCrimeIngestionService $service
+     * @param DatasetRecordIngestionService $service
      *
      * @throws Throwable
      */
-    public function handle(PoliceCrimeIngestionService $service): void
+    public function handle(DatasetRecordIngestionService $service): void
     {
         $service->ingest($this->yearMonth, $this->dryRun);
     }
 
     public function failed(Throwable $exception): void
     {
-        Log::error('IngestPoliceCrimes job failed', [
+        Log::error('IngestDatasetRecords job failed', [
             'month' => $this->yearMonth,
             'dry_run' => $this->dryRun,
             'error' => $exception->getMessage(),

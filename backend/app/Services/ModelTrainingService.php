@@ -143,8 +143,8 @@ class ModelTrainingService
         $validationSamples = $this->applyStandardization($validationSamples, $splits['means'], $splits['std_devs']);
 
         $normalizer = new Normalizer($resolvedHyperparameters['normalization']);
-        $normalizer->transform($trainSamples);
-        $normalizer->transform($validationSamples);
+        $this->normalizeSamplesSafely($normalizer, $trainSamples);
+        $this->normalizeSamplesSafely($normalizer, $validationSamples);
 
         $classifier = $this->createClassifier(
             $resolvedHyperparameters['model_type'],
@@ -518,8 +518,8 @@ class ModelTrainingService
                 $testSamples = $this->applyStandardization($testSamples, $statistics['means'], $statistics['std_devs']);
 
                 $normalizer = new Normalizer($hyperparameters['normalization']);
-                $normalizer->transform($trainSamples);
-                $normalizer->transform($testSamples);
+                $this->normalizeSamplesSafely($normalizer, $trainSamples);
+                $this->normalizeSamplesSafely($normalizer, $testSamples);
 
                 $classifier = $this->createClassifier(
                     $hyperparameters['model_type'],
@@ -898,13 +898,7 @@ class ModelTrainingService
     private function resolveSvcKernel(string $kernel, array $options): array
     {
         $kernel = strtolower($kernel);
-        $allowed = [
-            'linear' => Kernel::LINEAR,
-            'polynomial' => Kernel::POLYNOMIAL,
-            'sigmoid' => Kernel::SIGMOID,
-            'precomputed' => Kernel::PRECOMPUTED,
-            'rbf' => Kernel::RBF,
-        ];
+        $allowed = $this->availableSvcKernelTypes();
 
         if (! isset($allowed[$kernel])) {
             $kernel = 'rbf';
@@ -992,6 +986,31 @@ class ModelTrainingService
             ],
             default => [],
         };
+    }
+
+    /**
+     * Determine the available kernel constants for the installed PHP-ML version.
+     *
+     * @return array<string, int>
+     */
+    private function availableSvcKernelTypes(): array
+    {
+        $kernels = [
+            'linear' => Kernel::LINEAR,
+            'polynomial' => Kernel::POLYNOMIAL,
+            'sigmoid' => Kernel::SIGMOID,
+            'rbf' => Kernel::RBF,
+        ];
+
+        $precomputed = Kernel::class.'::PRECOMPUTED';
+
+        if (defined($precomputed)) {
+            /** @var int $value */
+            $value = constant($precomputed);
+            $kernels['precomputed'] = $value;
+        }
+
+        return $kernels;
     }
 
     /**
@@ -1535,6 +1554,28 @@ class ModelTrainingService
         ];
     }
 
+    private function normalizeSamplesSafely(Normalizer $normalizer, array &$samples): void
+    {
+        if ($samples === []) {
+            return;
+        }
+
+        try {
+            $normalizer->transform($samples);
+        } catch (InvalidArgumentException $exception) {
+            if (! $this->isInsufficientSampleException($exception)) {
+                throw $exception;
+            }
+        }
+    }
+
+    private function isInsufficientSampleException(InvalidArgumentException $exception): bool
+    {
+        $message = strtolower($exception->getMessage());
+
+        return str_contains($message, 'zero elements') || str_contains($message, 'at least 2 elements');
+    }
+
     /**
      * Notify progress via callback if provided.
      *
@@ -1629,7 +1670,7 @@ class ModelTrainingService
         $cost = $this->clampFloat($cost, 0.0001, 1000.0);
         $tolerance = $this->clampFloat($tolerance, 1.0e-6, 0.1);
         $cacheSize = $this->clampFloat($cacheSize, 1.0, 4096.0);
-        $allowedKernels = ['linear', 'rbf', 'polynomial', 'sigmoid', 'precomputed'];
+        $allowedKernels = array_keys($this->availableSvcKernelTypes());
 
         if (! in_array($kernel, $allowedKernels, true)) {
             $kernel = 'rbf';

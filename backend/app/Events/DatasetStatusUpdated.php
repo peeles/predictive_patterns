@@ -19,7 +19,7 @@ class DatasetStatusUpdated implements ShouldBroadcast
 
     public function __construct(
         public readonly string $datasetId,
-        public readonly string $status,
+        public readonly DatasetStatus $status,
         public readonly ?float $progress,
         public readonly string $updatedAt,
         public readonly ?string $ingestedAt = null,
@@ -30,13 +30,17 @@ class DatasetStatusUpdated implements ShouldBroadcast
     public static function fromDataset(Dataset $dataset, ?float $progress = null, ?string $message = null): self
     {
         $status = $dataset->status instanceof DatasetStatus
-            ? $dataset->status->value
-            : (string) $dataset->status;
+            ? $dataset->status
+            : DatasetStatus::tryFrom((string) $dataset->status);
+
+        if (! $status instanceof DatasetStatus) {
+            $status = DatasetStatus::Processing;
+        }
 
         $updatedAt = optional($dataset->updated_at)->toIso8601String() ?? now()->toIso8601String();
         $ingestedAt = optional($dataset->ingested_at)->toIso8601String();
 
-        if ($message === null && $status === DatasetStatus::Failed->value) {
+        if ($message === null && $status === DatasetStatus::Failed) {
             $metadata = $dataset->metadata;
             if (is_array($metadata)) {
                 $message = Arr::get($metadata, 'ingest_error');
@@ -70,7 +74,7 @@ class DatasetStatusUpdated implements ShouldBroadcast
     {
         return [
             'dataset_id' => $this->datasetId,
-            'status' => $this->status,
+            'status' => $this->status->value,
             'progress' => $this->progress,
             'updated_at' => $this->updatedAt,
             'ingested_at' => $this->ingestedAt,

@@ -44,7 +44,7 @@ const props = defineProps({
     windowStart: { type: String, required: true },
     windowEnd: { type: String, required: true },
     center: { type: Array, default: () => [53.4084, -2.9916] },
-    crimeType: { type: String, default: 'all' },
+    datasetType: { type: String, default: 'all' },
     district: { type: String, default: '' },
     customLayer: { type: String, default: '' },
 })
@@ -86,7 +86,7 @@ watch(() => props.center, (value) => {
 })
 
 watch(
-    () => [props.windowStart, props.windowEnd, props.crimeType, props.district, props.customLayer],
+    () => [props.windowStart, props.windowEnd, props.datasetType, props.district, props.customLayer],
     () => scheduleRender()
 )
 
@@ -382,7 +382,7 @@ async function fetchPredictions(map) {
                     areas,
                     window_start: props.windowStart,
                     window_end: props.windowEnd,
-                    crime_type: props.crimeType,
+                    dataset_type: props.datasetType,
                     district: props.district,
                     layer: props.customLayer,
                 },
@@ -470,7 +470,7 @@ async function renderPredictions() {
         })
 
         const riskText = formatNumber(risk)
-        layer.bindPopup(`Cell: ${prediction.area_id}<br/>Risk: ${riskText}<br/>Crime: ${props.crimeType}`)
+        layer.bindPopup(`Cell: ${prediction.area_id}<br/>Risk: ${riskText}<br/>Dataset type: ${props.datasetType}`)
         layer.bindTooltip(`Risk: ${riskText}`, { sticky: true })
         nextLayerGroup.addLayer(layer)
     }

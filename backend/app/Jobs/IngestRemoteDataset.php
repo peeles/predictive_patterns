@@ -67,7 +67,7 @@ class IngestRemoteDataset implements ShouldQueue
         $event = DatasetStatusUpdated::fromDataset($dataset);
         BroadcastDispatcher::dispatch($event, [
             'dataset_id' => $event->datasetId,
-            'status' => $event->status,
+            'status' => $event->status->value,
         ]);
 
         $disk = Storage::disk('local');
@@ -149,7 +149,7 @@ class IngestRemoteDataset implements ShouldQueue
             $event = DatasetStatusUpdated::fromDataset($dataset);
             BroadcastDispatcher::dispatch($event, [
                 'dataset_id' => $event->datasetId,
-                'status' => $event->status,
+                'status' => $event->status->value,
             ]);
 
             throw $exception;

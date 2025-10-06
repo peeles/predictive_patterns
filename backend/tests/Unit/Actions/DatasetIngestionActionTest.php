@@ -28,12 +28,21 @@ class DatasetIngestionActionTest extends TestCase
         Event::fake();
 
         $processingService = Mockery::mock(DatasetProcessingService::class);
-        $processingService->shouldReceive('mergeMetadata')->never();
+
+        $expectedMetadata = [
+            'source_files' => ['dataset.csv'],
+            'source_file_count' => 1,
+        ];
+
+        $processingService->shouldReceive('mergeMetadata')
+            ->once()
+            ->with([], $expectedMetadata)
+            ->andReturn($expectedMetadata);
         $processingService->shouldReceive('queueFinalise')
             ->once()
-            ->andReturnUsing(function ($dataset, array $schema, array $metadata) {
+            ->andReturnUsing(function ($dataset, array $schema, array $metadata) use ($expectedMetadata) {
                 $this->assertSame([], $schema);
-                $this->assertSame([], $metadata);
+                $this->assertSame($expectedMetadata, $metadata);
 
                 return $dataset;
             });
@@ -63,6 +72,8 @@ class DatasetIngestionActionTest extends TestCase
             'id' => $dataset->id,
             'name' => 'Test dataset',
         ]);
+
+        $this->assertSame($expectedMetadata, $dataset->metadata);
 
         Storage::disk('local')->assertExists($dataset->file_path);
         Event::assertDispatched(DatasetStatusUpdated::class);

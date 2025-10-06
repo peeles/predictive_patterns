@@ -1,6 +1,6 @@
 <?php
 
-use App\Enums\CrimeIngestionStatus;
+use App\Enums\DatasetRecordIngestionStatus;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
@@ -8,11 +8,11 @@ use Illuminate\Support\Facades\Schema;
 return new class extends Migration {
     public function up(): void
     {
-        Schema::create('crime_ingestion_runs', function (Blueprint $table): void {
+        Schema::create('dataset_record_ingestion_runs', function (Blueprint $table): void {
             $table->id();
             $table->string('month', 7);
             $table->boolean('dry_run')->default(false);
-            $table->string('status', 32)->default(CrimeIngestionStatus::Pending->value);
+            $table->string('status', 32)->default(DatasetRecordIngestionStatus::Pending->value);
             $table->unsignedBigInteger('records_detected')->default(0);
             $table->unsignedBigInteger('records_expected')->default(0);
             $table->unsignedBigInteger('records_inserted')->default(0);
@@ -31,6 +31,6 @@ return new class extends Migration {
 
     public function down(): void
     {
-        Schema::dropIfExists('crime_ingestion_runs');
+        Schema::dropIfExists('dataset_record_ingestion_runs');
     }
 };

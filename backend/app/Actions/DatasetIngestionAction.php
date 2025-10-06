@@ -66,7 +66,7 @@ class DatasetIngestionAction
 
         BroadcastDispatcher::dispatch($event, [
             'dataset_id' => $event->datasetId,
-            'status' => $event->status,
+            'status' => $event->status->value,
         ]);
 
         if ($dataset->source_type === 'url') {
@@ -88,7 +88,7 @@ class DatasetIngestionAction
 
         $dataset = $this->processingService->queueFinalise($dataset, $schemaMapping, $additionalMetadata);
 
-        return $dataset;
+        return $dataset->refresh();
     }
 
     /**

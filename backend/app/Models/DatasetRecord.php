@@ -9,7 +9,7 @@ use Illuminate\Support\Str;
 /**
  * @method static factory()
  */
-class Crime extends Model
+class DatasetRecord extends Model
 {
     use HasFactory;
 
@@ -23,7 +23,9 @@ class Crime extends Model
     protected $fillable = [
         'id',
         'category',
+        'severity',
         'occurred_at',
+        'risk_score',
         'lat',
         'lng',
         'h3_res6',
@@ -37,6 +39,7 @@ class Crime extends Model
      */
     protected $casts = [
         'occurred_at' => 'datetime',
+        'risk_score' => 'float',
         'raw' => 'array',
     ];
 

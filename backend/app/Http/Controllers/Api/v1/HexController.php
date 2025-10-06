@@ -31,7 +31,11 @@ class HexController extends BaseController
             $validated['resolution'],
             $validated['from'] ?? null,
             $validated['to'] ?? null,
-            $validated['crime_type'] ?? null,
+            $validated['dataset_type'] ?? null,
+            $validated['time_of_day_start'] ?? null,
+            $validated['time_of_day_end'] ?? null,
+            $validated['severity'] ?? null,
+            $validated['confidence_level'] ?? null,
         );
 
         $cells = [];
@@ -41,6 +45,7 @@ class HexController extends BaseController
                 'h3' => $h3,
                 'count' => $data['count'],
                 'categories' => $data['categories'],
+                'statistics' => $data['statistics'],
             ];
         }
 
@@ -69,7 +74,11 @@ class HexController extends BaseController
             $validated['resolution'],
             $validated['from'] ?? null,
             $validated['to'] ?? null,
-            $validated['crime_type'] ?? null,
+            $validated['dataset_type'] ?? null,
+            $validated['time_of_day_start'] ?? null,
+            $validated['time_of_day_end'] ?? null,
+            $validated['severity'] ?? null,
+            $validated['confidence_level'] ?? null,
         );
 
         $features = [];
@@ -81,6 +90,7 @@ class HexController extends BaseController
                     'h3' => $h3,
                     'count' => $data['count'],
                     'categories' => $data['categories'],
+                    'statistics' => $data['statistics'],
                 ],
                 'geometry' => [
                     'type' => 'Polygon',

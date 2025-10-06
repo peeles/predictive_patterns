@@ -4,6 +4,8 @@ use App\Models\PredictiveModel;
 use App\Models\Dataset;
 use Illuminate\Support\Facades\Broadcast;
 
+Broadcast::routes(['middleware' => ['auth:sanctum']]);
+
 Broadcast::channel('models.{modelId}.status', function ($user, string $modelId): bool {
     $model = PredictiveModel::find($modelId);
 

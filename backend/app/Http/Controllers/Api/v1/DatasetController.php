@@ -9,7 +9,7 @@ use App\Http\Requests\DatasetRunIndexRequest;
 use App\Http\Resources\DataIngestionCollection;
 use App\Http\Resources\DatasetCollection;
 use App\Http\Resources\DatasetResource;
-use App\Models\CrimeIngestionRun;
+use App\Models\DatasetRecordIngestionRun;
 use App\Models\Dataset;
 use App\Services\DatasetAnalysisService;
 use App\Support\InteractsWithPagination;
@@ -184,7 +184,7 @@ class DatasetController extends BaseController
             'desc'
         );
 
-        $query = CrimeIngestionRun::query();
+        $query = DatasetRecordIngestionRun::query();
 
         $filters = $request->input('filter', []);
 

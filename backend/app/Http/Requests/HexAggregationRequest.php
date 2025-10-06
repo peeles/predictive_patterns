@@ -21,7 +21,11 @@ class HexAggregationRequest extends FormRequest
             'resolution' => ['sometimes', 'integer', Rule::in([6, 7, 8])],
             'from' => ['nullable', 'date'],
             'to' => ['nullable', 'date', 'after_or_equal:from'],
-            'crime_type' => ['nullable', 'string'],
+            'dataset_type' => ['nullable', 'string'],
+            'severity' => ['nullable', 'string'],
+            'time_of_day_start' => ['nullable', 'integer', 'between:0,23'],
+            'time_of_day_end' => ['nullable', 'integer', 'between:0,23'],
+            'confidence_level' => ['nullable', 'numeric', 'gt:0', 'lt:1'],
         ];
     }
 
@@ -30,6 +34,20 @@ class HexAggregationRequest extends FormRequest
         $validated = parent::validated($key, $default);
 
         $validated['resolution'] = (int) ($validated['resolution'] ?? 7);
+
+        foreach (['time_of_day_start', 'time_of_day_end'] as $timeKey) {
+            if (array_key_exists($timeKey, $validated)) {
+                $validated[$timeKey] = $validated[$timeKey] !== null
+                    ? (int) $validated[$timeKey]
+                    : null;
+            }
+        }
+
+        if (array_key_exists('confidence_level', $validated)) {
+            $validated['confidence_level'] = $validated['confidence_level'] !== null
+                ? (float) $validated['confidence_level']
+                : null;
+        }
 
         return $validated;
     }

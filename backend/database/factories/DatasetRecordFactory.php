@@ -4,16 +4,16 @@ declare(strict_types=1);
 
 namespace Database\Factories;
 
-use App\Models\Crime;
+use App\Models\DatasetRecord;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Str;
 
 /**
- * @extends Factory<\App\Models\Crime>
+ * @extends Factory<\App\Models\DatasetRecord>
  */
-class CrimeFactory extends Factory
+class DatasetRecordFactory extends Factory
 {
-    protected $model = Crime::class;
+    protected $model = DatasetRecord::class;
 
     public function definition(): array
     {
@@ -22,8 +22,10 @@ class CrimeFactory extends Factory
 
         return [
             'id' => (string) Str::uuid(),
-            'category' => $this->faker->randomElement(['burglary', 'assault', 'theft']),
+            'category' => $this->faker->randomElement(['environmental', 'transport', 'health']),
+            'severity' => $this->faker->randomElement(['low', 'medium', 'high']),
             'occurred_at' => $this->faker->dateTimeBetween('-2 years', 'now'),
+            'risk_score' => $this->faker->randomFloat(4, 0, 1),
             'lat' => $lat,
             'lng' => $lng,
             'h3_res6' => $this->faker->regexify('[0-9a-f]{15}'),

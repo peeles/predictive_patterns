@@ -2,15 +2,15 @@
 
 namespace Tests\Unit;
 
-use App\Exceptions\PoliceCrimeIngestionException;
+use App\Exceptions\DatasetRecordIngestionException;
 use App\Services\H3IndexService;
-use App\Services\PoliceCrimeIngestionService;
+use App\Services\DatasetRecordIngestionService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Mockery;
 use Tests\TestCase;
 
-class PoliceCrimeIngestionServiceTest extends TestCase
+class DatasetRecordIngestionServiceTest extends TestCase
 {
     use RefreshDatabase;
 
@@ -22,10 +22,10 @@ class PoliceCrimeIngestionServiceTest extends TestCase
         $h3->shouldIgnoreMissing();
         $this->app->instance(H3IndexService::class, $h3);
 
-        $service = $this->app->make(PoliceCrimeIngestionService::class);
+        $service = $this->app->make(DatasetRecordIngestionService::class);
 
-        $this->expectException(PoliceCrimeIngestionException::class);
-        $this->expectExceptionMessage('No police crime archive is available for 2025-08 yet.');
+        $this->expectException(DatasetRecordIngestionException::class);
+        $this->expectExceptionMessage('No dataset archive is available for 2025-08 yet.');
 
         $service->ingest('2025-08');
     }

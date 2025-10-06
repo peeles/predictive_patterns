@@ -1,12 +1,12 @@
 # Backend (Laravel API)
 
-The backend is a Laravel 10 application responsible for serving predictive risk analytics and orchestrating crime ingestion pipelines.
+The backend is a Laravel 10 application responsible for serving predictive risk analytics and orchestrating dataset record ingestion pipelines.
 
 ## Key features
 
 - **Hex aggregation API** – `/api/hexes` and `/api/hexes/geojson` expose validated aggregation responses with PSR-12 compliant controllers and DTO-backed services.
 - **H3 integration** – services gracefully resolve either the PHP H3 extension or compatible FFI bindings at runtime.
-- **Police archive ingestion** – resilient downloader normalises, deduplicates, and bulk inserts police records with H3 enrichment.
+- **Dataset record archive ingestion** – resilient downloader normalises, deduplicates, and bulk inserts dataset records with H3 enrichment.
 - **MCP support** – `php artisan mcp:serve` exposes the API’s capabilities to Model Context Protocol compatible clients and now includes discovery helpers such as `get_categories`, `list_ingested_months`, and `get_top_cells`.
 
 
@@ -53,7 +53,7 @@ php artisan test
 
 | Command | Description |
 |---------|-------------|
-| `php artisan crimes:ingest 2024-03` | Download and import a police archive for March 2024. |
+| `php artisan dataset-records:ingest 2024-03` | Download and import a dataset archive for March 2024. |
 | `php artisan schedule:run` | Trigger scheduled ingestion or housekeeping tasks. |
 | `php artisan mcp:serve` | Start the Model Context Protocol bridge for the Predictive Patterns API. |
 
@@ -61,7 +61,7 @@ php artisan test
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `GET` | `/api/hexes` | Aggregated counts for H3 cells intersecting a bounding box. Supports `bbox`, `resolution`, `from`, `to`, and `crime_type` query parameters. |
+| `GET` | `/api/hexes` | Aggregated counts for H3 cells intersecting a bounding box. Supports `bbox`, `resolution`, `from`, `to`, and `dataset_type` query parameters. |
 | `GET` | `/api/v1/heatmap/{z}/{x}/{y}` | Tile-friendly aggregate payload for the requested XYZ tile. Supports optional `ts_start`, `ts_end`, and `horizon` filters. |
 | `GET` | `/api/hexes/geojson` | GeoJSON feature collection for aggregated H3 cells. |
 | `GET` | `/api/export` | Download aggregated data as CSV (default) or GeoJSON via `format=geojson`. Accepts the same filters as `/api/hexes`. |
@@ -75,11 +75,11 @@ Authenticated routes require either an `Authorization: Bearer <token>` header is
 
 | Tool | Purpose |
 |------|---------|
-| `aggregate_hexes` | Aggregate crime counts for a bounding box. |
-| `export_geojson` | Produce a GeoJSON feature collection for crime aggregates. |
-| `get_categories` | List distinct crime categories available in the datastore. |
+| `aggregate_hexes` | Aggregate dataset record counts for a bounding box. |
+| `export_geojson` | Produce a GeoJSON feature collection for dataset aggregates. |
+| `get_categories` | List distinct dataset categories available in the datastore. |
 | `get_top_cells` | Return the highest ranking H3 cells for the supplied filters. |
-| `ingest_crime_data` | Queue a background job to ingest a month of police crime data. |
+| `ingest_dataset_data` | Queue a background job to ingest a month of dataset records. |
 | `list_ingested_months` | Summarise the months currently present in the relational store. |
 
 
@@ -91,8 +91,11 @@ Authenticated routes require either an `Authorization: Bearer <token>` header is
 | `API_RATE_LIMIT` | Requests per minute allowed for each client IP when using the API. | `60` |
 | `API_RATE_LIMIT_AUTH_LOGIN` | Requests per minute allowed for login attempts per email/IP combination. | `10` |
 | `API_RATE_LIMIT_AUTH_REFRESH` | Requests per minute allowed for refresh attempts per token/IP combination. | `60` |
-| `POLICE_ARCHIVE_TIMEOUT` | Override HTTP timeout (seconds) for police data downloads. | `120` |
-| `POLICE_ARCHIVE_RETRIES` | Number of retry attempts for failed archive downloads. | `3` |
+| `DATASET_RECORD_INGESTION_TEMP_PATH` | Temporary directory for dataset archive downloads. | `storage_path('app/dataset-record-ingestion')` |
+| `DATASET_RECORD_INGESTION_NOTIFY_MAIL` | Comma-separated list of email recipients for ingestion failure alerts. | _(empty)_ |
+| `DATASET_RECORD_INGESTION_NOTIFY_SLACK_WEBHOOK` | Slack webhook URL for ingestion failure alerts. | _(empty)_ |
+| `DATASET_RECORD_INGESTION_PROGRESS_INTERVAL` | Interval (rows) between ingestion progress log entries. | `5000` |
+| `DATASET_RECORD_INGESTION_CHUNK_SIZE` | Batch size used when inserting dataset records. | `500` |
 | `QUEUE_CONNECTION` | Queue backend for ingestion jobs (`sync`, `database`, etc.). | `sync` |
 | `BROADCAST_DRIVER` | Primary broadcast driver. Laravel Reverb is used by default. | `reverb` |
 | `BROADCAST_ENABLE_PUSHER_FALLBACK` | Opt-in flag that retries failed broadcasts via the configured Pusher connection and logs telemetry. Requires `PUSHER_APP_ID`, `PUSHER_APP_KEY`, and `PUSHER_APP_SECRET`. | `false` |

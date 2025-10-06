@@ -82,7 +82,7 @@ class DatasetProcessingService
         $event = DatasetStatusUpdated::fromDataset($dataset, 1.0);
         BroadcastDispatcher::dispatch($event, [
             'dataset_id' => $event->datasetId,
-            'status' => $event->status,
+            'status' => $event->status->value,
         ]);
 
         return $dataset;
@@ -113,7 +113,7 @@ class DatasetProcessingService
         $event = DatasetStatusUpdated::fromDataset($dataset, 0.0);
         BroadcastDispatcher::dispatch($event, [
             'dataset_id' => $event->datasetId,
-            'status' => $event->status,
+            'status' => $event->status->value,
         ]);
 
         return $dataset;
