@@ -47,7 +47,7 @@ import ModelsTable from '../../components/models/ModelsTable.vue'
 import ModelEvaluationsPanel from '../../components/models/ModelEvaluationsPanel.vue'
 import {useAuthStore} from '../../stores/auth'
 import {useModelStore} from '../../stores/model'
-import PageHeader from "../../components/common/PageHeader.vue";
+import PageHeader from '../../components/common/PageHeader.vue'
 
 const authStore = useAuthStore()
 const modelStore = useModelStore()

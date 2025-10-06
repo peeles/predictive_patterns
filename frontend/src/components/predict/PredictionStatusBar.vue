@@ -54,7 +54,7 @@ const props = defineProps({
 
 const normalizedStatus = computed(() => (props.status ?? '').toLowerCase())
 
-const visible = computed(() => ['queued', 'running'].includes(normalizedStatus.value))
+const visible = computed(() => ['queued', 'running', 'failed'].includes(normalizedStatus.value))
 
 const statusLabel = computed(() => {
     switch (normalizedStatus.value) {
@@ -75,7 +75,10 @@ const progressPercent = computed(() => {
     if (!Number.isFinite(props.progress)) {
         return null
     }
-    return Math.min(100, Math.max(0, Math.round(props.progress)))
+
+    const basis = props.progress <= 1 ? props.progress * 100 : props.progress
+
+    return Math.min(100, Math.max(0, Math.round(basis)))
 })
 
 const statusMessage = computed(() => props.message)

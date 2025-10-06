@@ -115,7 +115,7 @@ import { useAuthStore } from '../stores/auth.js'
 import PredictGenerateModal from '../components/predict/PredictGenerateModal.vue'
 import BaseTabs from '../components/common/BaseTabs.vue'
 import BaseTabPanel from '../components/common/BaseTabPanel.vue'
-import PageHeader from "../components/common/PageHeader.vue";
+import PageHeader from '../components/common/PageHeader.vue'
 import PredictionStatusBar from '../components/predict/PredictionStatusBar.vue'
 
 const MapView = defineAsyncComponent(() => import('../components/map/MapView.vue'))
@@ -192,6 +192,6 @@ const activePredictionUpdatedAt = computed(() => {
 })
 
 function openWizard() {
-    wizardOpen.value = true;
+    wizardOpen.value = true
 }
 </script>

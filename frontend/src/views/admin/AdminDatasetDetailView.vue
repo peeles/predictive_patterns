@@ -155,7 +155,7 @@ import apiClient from '../../services/apiClient'
 import { notifyError } from '../../utils/notifications'
 import BaseDataTable from '../../components/common/BaseDataTable.vue'
 import PaginationControls from '../../components/common/pagination/PaginationControls.vue'
-import PageHeader from "../../components/common/PageHeader.vue";
+import PageHeader from '../../components/common/PageHeader.vue'
 
 const route = useRoute()
 const router = useRouter()

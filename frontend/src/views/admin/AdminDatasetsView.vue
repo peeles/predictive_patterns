@@ -360,7 +360,7 @@ import DatasetIngestModal from '../../components/datasets/DatasetIngestModal.vue
 import apiClient from '../../services/apiClient'
 import { notifyError } from '../../utils/notifications'
 import { getBroadcastClient } from '../../services/broadcast'
-import PageHeader from "../../components/common/PageHeader.vue";
+import PageHeader from '../../components/common/PageHeader.vue'
 
 const wizardOpen = ref(false)
 const datasets = ref([])

@@ -23,7 +23,9 @@ const normalisePercent = (value) => {
         return null
     }
 
-    return Math.min(100, Math.max(0, Math.round(value)))
+    const basis = value <= 1 ? value * 100 : value
+
+    return Math.min(100, Math.max(0, Math.round(basis)))
 }
 
 const progressRatioToPercent = (value) => {
