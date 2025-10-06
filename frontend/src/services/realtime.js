@@ -1,4 +1,4 @@
-import { echo } from '@/plugins/echo'
+import { echo } from '../plugins/echo'
 
 const connectionListeners = new Set()
 let connectionHandlersBound = false
