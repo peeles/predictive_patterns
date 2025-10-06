@@ -8,7 +8,12 @@
     "types": [
       "vitest",
       "vite/client",
-      "@playwright/test"
+      "@playwright/test",
+      "node"
+    ],
+    "lib": [
+      "ESNext",
+      "DOM"
     ]
   },
   "include": [
