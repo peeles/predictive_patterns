@@ -104,6 +104,15 @@ class DatasetProcessingService
             $dataset->save();
         }
 
+        $connection = (string) config('queue.default');
+        $driver = config(sprintf('queue.connections.%s.driver', $connection));
+
+        if ($driver === 'null') {
+            $dataset->refresh();
+
+            return $this->finalise($dataset, $schemaMapping, $additionalMetadata);
+        }
+
         CompleteDatasetIngestion::dispatch(
             $dataset->getKey(),
             $schemaMapping,

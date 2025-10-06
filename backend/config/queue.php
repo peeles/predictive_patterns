@@ -63,6 +63,11 @@ return [
             'after_commit' => false,
         ],
 
+        'null' => [
+            'driver' => 'null',
+            'after_commit' => false,
+        ],
+
         'training' => (static function () {
             $defaultDriver = env('QUEUE_CONNECTION', 'database');
             $supportsRedis = extension_loaded('redis');
