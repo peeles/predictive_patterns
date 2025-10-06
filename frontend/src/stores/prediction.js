@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import apiClient from '../services/apiClient'
-import { getBroadcastClient } from '../services/broadcast'
+import { subscribeToChannel, unsubscribeFromChannel } from '../services/realtime'
 import { notifyError, notifyInfo, notifySuccess } from '../utils/notifications'
 import { useModelStore } from './model'
 import { useRequestStore } from './request'
@@ -421,15 +421,7 @@ export const usePredictionStore = defineStore('prediction', {
         stopRealtimeTracking() {
             const subscription = this.realtimeSubscription
             if (subscription) {
-                const broadcast = getBroadcastClient()
-                if (broadcast) {
-                    const channelName = subscription?.channelName ?? `predictions.${this.realtimePredictionId}.status`
-                    try {
-                        broadcast.unsubscribe(channelName)
-                    } catch (error) {
-                        console.warn('Error unsubscribing from prediction status channel', error)
-                    }
-                }
+                unsubscribeFromChannel(subscription)
             }
 
             this.realtimeSubscription = null
@@ -444,26 +436,18 @@ export const usePredictionStore = defineStore('prediction', {
                 return null
             }
 
-            const broadcast = getBroadcastClient()
-            if (!broadcast) {
-                return null
-            }
-
             this.stopRealtimeTracking()
             this.abortRealtimeAwaiter('REALTIME_REPLACED')
 
             const channelName = `predictions.${predictionId}.status`
-            let subscription
 
             try {
-                subscription = broadcast.subscribe(channelName, {
+                this.realtimeSubscription = subscribeToChannel(channelName, {
+                    events: ['PredictionStatusUpdated'],
                     onEvent: (eventName, payload) => {
-                        if (eventName === 'PredictionStatusUpdated' || eventName === '.PredictionStatusUpdated') {
+                        if (eventName === 'PredictionStatusUpdated') {
                             this.handleRealtimeStatus(predictionId, payload)
                         }
-                    },
-                    onSubscribed: () => {
-                        subscription.status = 'subscribed'
                     },
                     onError: (error) => {
                         console.warn('Prediction status channel error', error)
@@ -475,10 +459,6 @@ export const usePredictionStore = defineStore('prediction', {
                 return null
             }
 
-            subscription.status = 'pending'
-            subscription.channelName = channelName
-
-            this.realtimeSubscription = subscription
             this.realtimePredictionId = predictionId
             this.realtimeFilters = filters ? { ...filters } : null
             this.realtimeStatus = null
@@ -486,9 +466,8 @@ export const usePredictionStore = defineStore('prediction', {
 
             if (!awaitCompletion) {
                 this.realtimeAwaiter = null
-                return subscription
+                return this.realtimeSubscription
             }
-
             let resolveFn
             let rejectFn
             const promise = new Promise((resolve, reject) => {

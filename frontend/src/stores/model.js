@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import apiClient from '../services/apiClient'
-import { getBroadcastClient, onConnectionStateChange } from '../services/broadcast'
+import { onConnectionStateChange, subscribeToChannel, unsubscribeFromChannel } from '../services/realtime'
 import { notifyError, notifySuccess } from '../utils/notifications'
 import { useRequestStore } from './request'
 
@@ -480,28 +480,21 @@ export const useModelStore = defineStore('model', {
                 return
             }
 
-            const broadcast = getBroadcastClient()
-            if (!broadcast) {
-                this.ensureStatusPolling(modelId)
-                return
-            }
-
             const channelName = `models.${modelId}.status`
 
             try {
-                const subscription = broadcast.subscribe(channelName, {
+                const subscription = subscribeToChannel(channelName, {
+                    events: ['ModelStatusUpdated'],
                     onEvent: (eventName, payload) => {
-                        if (eventName === 'ModelStatusUpdated' || eventName === '.ModelStatusUpdated') {
+                        if (eventName === 'ModelStatusUpdated') {
                             this.handleRealtimeStatus(modelId, payload)
                         }
                     },
                     onSubscribed: () => {
-                        subscription.status = 'subscribed'
                         this.stopStatusPolling(modelId)
                     },
                     onError: (error) => {
                         console.warn('Model status channel error', error)
-                        subscription.status = 'error'
                         this.ensureStatusPolling(modelId, { force: true })
                     },
                 })
@@ -522,15 +515,7 @@ export const useModelStore = defineStore('model', {
                 return
             }
 
-            const broadcast = getBroadcastClient()
-            if (broadcast) {
-                const channelName = subscription?.channelName ?? `models.${modelId}.status`
-                try {
-                    broadcast.unsubscribe(channelName)
-                } catch (error) {
-                    console.warn('Error leaving model status channel', error)
-                }
-            }
+            unsubscribeFromChannel(subscription)
 
             const next = { ...this.statusSubscriptions }
             delete next[modelId]

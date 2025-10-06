@@ -84,7 +84,6 @@ Route::get('/health', function () {
         'timestamp' => now()->toDateTimeString(),
         'services' => [
             'sanctum' => class_exists('Laravel\Sanctum\Sanctum'),
-            'reverb' => class_exists('Laravel\Reverb\ReverbServiceProvider'),
             'horizon' => class_exists('Laravel\Horizon\Horizon'),
         ]
     ]);

@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "108c33e06199e4b9ce2fd79ab6265d36",
+    "content-hash": "bbdca3b0f4002fe357c4e14ee063aceb",
     "packages": [
         {
             "name": "brick/math",
@@ -1587,88 +1587,6 @@
                 "source": "https://github.com/laravel/prompts/tree/v0.3.7"
             },
             "time": "2025-09-19T13:47:56+00:00"
-        },
-        {
-            "name": "laravel/reverb",
-            "version": "v1.6.0",
-            "source": {
-                "type": "git",
-                "url": "https://github.com/laravel/reverb.git",
-                "reference": "728f6e2c779dae844c2862ea060ca32db5b6b495"
-            },
-            "dist": {
-                "type": "zip",
-                "url": "https://api.github.com/repos/laravel/reverb/zipball/728f6e2c779dae844c2862ea060ca32db5b6b495",
-                "reference": "728f6e2c779dae844c2862ea060ca32db5b6b495",
-                "shasum": ""
-            },
-            "require": {
-                "clue/redis-react": "^2.6",
-                "guzzlehttp/psr7": "^2.6",
-                "illuminate/console": "^10.47|^11.0|^12.0",
-                "illuminate/contracts": "^10.47|^11.0|^12.0",
-                "illuminate/http": "^10.47|^11.0|^12.0",
-                "illuminate/support": "^10.47|^11.0|^12.0",
-                "laravel/prompts": "^0.1.15|^0.2.0|^0.3.0",
-                "php": "^8.2",
-                "pusher/pusher-php-server": "^7.2",
-                "ratchet/rfc6455": "^0.4",
-                "react/promise-timer": "^1.10",
-                "react/socket": "^1.14",
-                "symfony/console": "^6.0|^7.0",
-                "symfony/http-foundation": "^6.3|^7.0"
-            },
-            "require-dev": {
-                "orchestra/testbench": "^8.0|^9.0|^10.0",
-                "pestphp/pest": "^2.0|^3.0",
-                "phpstan/phpstan": "^1.10",
-                "ratchet/pawl": "^0.4.1",
-                "react/async": "^4.2",
-                "react/http": "^1.9"
-            },
-            "type": "library",
-            "extra": {
-                "laravel": {
-                    "aliases": {
-                        "Output": "Laravel\\Reverb\\Output"
-                    },
-                    "providers": [
-                        "Laravel\\Reverb\\ApplicationManagerServiceProvider",
-                        "Laravel\\Reverb\\ReverbServiceProvider"
-                    ]
-                }
-            },
-            "autoload": {
-                "psr-4": {
-                    "Laravel\\Reverb\\": "src/"
-                }
-            },
-            "notification-url": "https://packagist.org/downloads/",
-            "license": [
-                "MIT"
-            ],
-            "authors": [
-                {
-                    "name": "Taylor Otwell",
-                    "email": "taylor@laravel.com"
-                },
-                {
-                    "name": "Joe Dixon",
-                    "email": "joe@laravel.com"
-                }
-            ],
-            "description": "Laravel Reverb provides a real-time WebSocket communication backend for Laravel applications.",
-            "keywords": [
-                "WebSockets",
-                "laravel",
-                "real-time",
-                "websocket"
-            ],
-            "support": {
-                "issues": "https://github.com/laravel/reverb/issues",
-                "source": "https://github.com/laravel/reverb/tree/v1.6.0"
-            },
-            "time": "2025-09-07T23:21:05+00:00"
         },
         {
             "name": "laravel/sanctum",

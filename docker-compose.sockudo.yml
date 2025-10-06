@@ -1,0 +1,15 @@
+services:
+  sockudo:
+    image: sockudo/sockudo:latest
+    ports:
+      - "6001:6001"
+      - "9601:9601"
+    environment:
+      HOST: 0.0.0.0
+      PORT: 6001
+      METRICS_ENABLED: "true"
+      METRICS_PORT: 9601
+      SOCKUDO_DEFAULT_APP_ID: predictive-patterns
+      SOCKUDO_DEFAULT_APP_KEY: local-key
+      SOCKUDO_DEFAULT_APP_SECRET: local-secret
+      SOCKUDO_ENABLE_CLIENT_MESSAGES: "true"
