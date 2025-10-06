@@ -116,9 +116,10 @@ Keep secrets such as database credentials and API keys in the `.env` file and ne
 Sockudo provides the local websocket server that powers event broadcasting. To run the full stack locally:
 
 ```bash
-docker compose -f docker-compose.sockudo.yml up -d
-php artisan queue:work
-php artisan serve
+docker compose up -d sockudo
+docker compose up -d backend horizon frontend
+docker compose exec backend php artisan queue:work
+docker compose exec backend php artisan serve
 pnpm --dir ../frontend dev
 ```
 
