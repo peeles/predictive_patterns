@@ -66,7 +66,7 @@ const resolveHost = () => {
   return pusherHost
 }
 
-const resolvePort = (scheme) => {
+const resolvePort = () => {
   if (pusherPort) {
     const numericPort = Number(pusherPort)
 
