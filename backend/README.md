@@ -98,6 +98,7 @@ Authenticated routes require either an `Authorization: Bearer <token>` header is
 | `DATASET_RECORD_INGESTION_CHUNK_SIZE` | Batch size used when inserting dataset records. | `500` |
 | `QUEUE_CONNECTION` | Queue backend for ingestion jobs (`sync`, `database`, etc.). | `sync` |
 | `BROADCAST_DRIVER` | Primary broadcast driver. Sockudo (Pusher protocol) is used by default. | `pusher` |
+| `BROADCAST_CONNECTION` | _(Legacy)_ Fallback broadcast driver variable supported for backwards compatibility. | `pusher` |
 | `PUSHER_APP_ID` | Sockudo application identifier used for websocket authentication. | `predictive-patterns` |
 | `PUSHER_APP_KEY` | Public Sockudo key shared with SPA clients. | `local-key` |
 | `PUSHER_APP_SECRET` | Sockudo application secret used to sign broadcast requests. | `local-secret` |
