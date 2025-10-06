@@ -908,7 +908,19 @@ function registerBroadcastConnectionListener(store) {
 
         if (current === 'connected') {
             store.handleOnline()
-        } else if (current === 'disconnected' || current === 'reconnecting' || current === 'error') {
+            return
+        }
+
+        const offlineStates = new Set([
+            'disconnected',
+            'reconnecting',
+            'error',
+            'failed',
+            'unavailable',
+            'connecting',
+        ])
+
+        if (offlineStates.has(current)) {
             store.handleOffline()
         }
     }
