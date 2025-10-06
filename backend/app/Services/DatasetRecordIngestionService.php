@@ -16,6 +16,7 @@ use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Str;
 use RuntimeException;
 use Throwable;
 use ZipArchive;
@@ -493,12 +494,16 @@ class DatasetRecordIngestionService
 
         $seen[$identifier] = true;
 
+        $riskScore = $this->extractRiskScore($normalised);
+        $severity = $this->extractSeverity($normalised, $riskScore);
         $raw = $this->encodeRaw($row);
 
         return [
             'id' => $identifier,
             'category' => $category,
+            'severity' => $severity,
             'occurred_at' => $occurredAt->toDateTimeString(),
+            'risk_score' => $riskScore,
             'lat' => $lat,
             'lng' => $lng,
             'h3_res6' => call_user_func($toH3, $lat, $lng, 6),
@@ -508,6 +513,137 @@ class DatasetRecordIngestionService
             'created_at' => $ingestedAt,
             'updated_at' => $ingestedAt,
         ];
+    }
+
+    /**
+     * Attempt to extract a severity string from the supplied dataset row.
+     *
+     * @param array<string, mixed> $row
+     */
+    private function extractSeverity(array $row, ?float $riskScore): ?string
+    {
+        $candidates = [
+            'severity',
+            'risk_severity',
+            'risk_level',
+            'severity_level',
+            'harm_level',
+            'harm',
+        ];
+
+        foreach ($candidates as $candidate) {
+            if (!array_key_exists($candidate, $row)) {
+                continue;
+            }
+
+            $value = $row[$candidate];
+
+            if ($value === null) {
+                continue;
+            }
+
+            $normalised = Str::lower(trim((string) $value));
+
+            if ($normalised === '') {
+                continue;
+            }
+
+            $mapped = match ($normalised) {
+                'lo', 'low', 'minor', 'minimal' => 'low',
+                'med', 'medium', 'moderate', 'avg', 'average' => 'medium',
+                'hi', 'high', 'severe', 'critical', 'major' => 'high',
+                default => $normalised,
+            };
+
+            return $mapped;
+        }
+
+        if ($riskScore === null) {
+            return null;
+        }
+
+        if ($riskScore < 0.34) {
+            return 'low';
+        }
+
+        if ($riskScore < 0.67) {
+            return 'medium';
+        }
+
+        return 'high';
+    }
+
+    /**
+     * Attempt to extract a risk score from the supplied dataset row.
+     *
+     * @param array<string, mixed> $row
+     */
+    private function extractRiskScore(array $row): ?float
+    {
+        $candidates = [
+            'risk_score',
+            'risk',
+            'risk_value',
+            'risk_index',
+            'risk_probability',
+            'score',
+        ];
+
+        foreach ($candidates as $candidate) {
+            if (!array_key_exists($candidate, $row)) {
+                continue;
+            }
+
+            $value = $this->parseNumeric($row[$candidate]);
+
+            if ($value === null) {
+                continue;
+            }
+
+            return round($value, 4);
+        }
+
+        return null;
+    }
+
+    private function parseNumeric(mixed $value): ?float
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        $stringValue = is_string($value) ? trim($value) : $value;
+
+        if (is_string($stringValue)) {
+            if ($stringValue === '') {
+                return null;
+            }
+
+            $isPercentage = str_contains($stringValue, '%');
+            $normalised = str_replace(['%', ',', ' '], ['', '', ''], $stringValue);
+
+            if (!is_numeric($normalised)) {
+                return null;
+            }
+
+            $numeric = (float) $normalised;
+
+            if ($isPercentage) {
+                return max(min($numeric / 100, 1.0), 0.0);
+            }
+
+            if ($numeric > 1 && $numeric <= 100) {
+                return $numeric / 100;
+            }
+
+            return $numeric;
+        }
+
+        if (is_numeric($stringValue)) {
+            return (float) $stringValue;
+        }
+
+        return null;
     }
 
     /**
