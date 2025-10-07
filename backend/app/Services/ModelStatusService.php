@@ -7,7 +7,6 @@ use App\Events\ModelStatusUpdated;
 use App\Models\PredictiveModel;
 use App\Support\Broadcasting\BroadcastDispatcher;
 use Illuminate\Support\Arr;
-use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Redis;
 use Throwable;
 

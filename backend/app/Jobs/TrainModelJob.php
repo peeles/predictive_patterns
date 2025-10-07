@@ -91,8 +91,7 @@ class TrainModelJob implements ShouldQueue
             ])->save();
 
             $statusService->markIdle($model->id);
-        }
-        catch (Throwable $exception) {
+        } catch (Throwable $exception) {
             $run->fill([
                 'status' => TrainingStatus::Failed,
                 'error_message' => $exception->getMessage(),

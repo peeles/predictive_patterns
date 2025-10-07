@@ -127,7 +127,7 @@ class ImputerFactory
         $strategyInterface = 'Phpml\\Preprocessing\\Imputer\\Strategy';
 
         if (interface_exists($strategyInterface)) {
-            return new class($fillValue) implements Strategy {
+            return new class ($fillValue) implements Strategy {
                 public function __construct(private readonly mixed $fillValue)
                 {
                 }
@@ -139,7 +139,7 @@ class ImputerFactory
             };
         }
 
-        return new class($fillValue) {
+        return new class ($fillValue) {
             public function __construct(private readonly mixed $fillValue)
             {
             }

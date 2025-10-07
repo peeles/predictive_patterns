@@ -289,7 +289,7 @@ class H3AggregationService
         ?string          $severity,
     ): string {
         $normalizedBbox = array_map(
-            static fn(mixed $value): string => number_format((float) $value, 6, '.', ''),
+            static fn (mixed $value): string => number_format((float) $value, 6, '.', ''),
             $boundingBox
         );
 

@@ -33,7 +33,6 @@ use Phpml\Preprocessing\Imputer;
 use Phpml\Preprocessing\Normalizer;
 use Phpml\SupportVectorMachine\Kernel;
 use ReflectionClass;
-use ReflectionException;
 use RuntimeException;
 use TypeError;
 
@@ -809,7 +808,7 @@ class ModelTrainingService
      * @param array<string, mixed> $hyperparameters
      * @param array<string, list<mixed>> $userGrid
      *
-     * @return list<array{kernel: string, kernel_options: array<string, float|int>}> 
+     * @return list<array{kernel: string, kernel_options: array<string, float|int>}>
      */
     private function mergeSvcKernelGrid(array $hyperparameters, array $userGrid): array
     {

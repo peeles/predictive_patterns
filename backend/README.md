@@ -54,11 +54,10 @@ php artisan test
 Common quality gates can be executed locally via Composer scripts:
 
 ```bash
-composer update       # Install the QA toolchain defined in require-dev
+composer update      # Install the QA toolchain defined in require-dev
 composer lint        # Laravel Pint (PSR-12)
-composer analyse     # Larastan at level 6
+composer analyse     # LaraStan at level 6
 composer test:pest   # Pest with code coverage
-composer rector      # Rector dry run using Laravel 12 sets
 ```
 
 Generate type-safe refactors in small batches with Rector’s incremental cache at `storage/framework/rector` to keep feedback loops snappy.

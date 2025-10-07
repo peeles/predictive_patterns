@@ -315,8 +315,7 @@ class ModelController extends BaseController
         TrainModelRequest $request,
         ModelStatusService $statusService,
         IdempotencyService $idempotencyService,
-    ): JsonResponse
-    {
+    ): JsonResponse {
         $validated = $request->validated();
         $model = PredictiveModel::query()->findOrFail($validated['model_id']);
 
@@ -380,8 +379,7 @@ class ModelController extends BaseController
         EvaluateModelRequest $request,
         ModelStatusService $statusService,
         IdempotencyService $idempotencyService,
-    ): JsonResponse
-    {
+    ): JsonResponse {
         $model = PredictiveModel::query()->findOrFail($id);
 
         $this->authorize('evaluate', $model);

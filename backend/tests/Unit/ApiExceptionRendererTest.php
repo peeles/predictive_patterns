@@ -81,7 +81,7 @@ class ApiExceptionRendererTest extends TestCase
     {
         $request = Request::create('/api/test', 'GET');
 
-        $exception = new QueryException('mysql','select 1', [], new RuntimeException('SQLSTATE[HY000]'));
+        $exception = new QueryException('mysql', 'select 1', [], new RuntimeException('SQLSTATE[HY000]'));
 
         $response = ApiExceptionRenderer::render($exception, $request);
         $payload = $response->getData(true);

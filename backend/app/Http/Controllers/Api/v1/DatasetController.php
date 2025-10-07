@@ -25,8 +25,7 @@ class DatasetController extends BaseController
     public function __construct(
         private readonly DatasetIngestionAction $ingestionAction,
         private readonly DatasetAnalysisService $analysisService,
-    )
-    {
+    ) {
         $this->middleware(['auth.api', 'throttle:api']);
     }
 

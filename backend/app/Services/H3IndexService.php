@@ -8,6 +8,7 @@ use JsonException;
 use RuntimeException;
 use Symfony\Component\Process\InputStream;
 use Symfony\Component\Process\Process;
+
 use function H3\geoToH3;
 use function H3\latLngToCell;
 
