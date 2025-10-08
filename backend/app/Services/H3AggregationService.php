@@ -8,6 +8,7 @@ use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Closure;
 use DateTimeInterface;
+use Exception;
 use Illuminate\Cache\TaggableStore;
 use Illuminate\Contracts\Cache\Repository as CacheRepository;
 use Illuminate\Database\Eloquent\Builder;
@@ -15,6 +16,7 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
+use Throwable;
 
 /**
  * Aggregates dataset record counts across H3 cells with optional temporal and category filtering.
@@ -39,7 +41,7 @@ class H3AggregationService
      * @param array{0: float, 1: float, 2: float, 3: float} $boundingBox
      * @return HexAggregate[]
      *
-     * @throws InvalidArgumentException When an unsupported resolution is supplied
+     * @throws InvalidArgumentException|\Psr\SimpleCache\InvalidArgumentException
      */
     public function aggregateByBoundingBox(
         array            $boundingBox,
@@ -88,10 +90,18 @@ class H3AggregationService
     /**
      * Convenience wrapper accepting a string bounding box and returning keyed results for controllers.
      *
+     * @param string $bboxString
+     * @param int $resolution
      * @param CarbonInterface|string|null $from
      * @param CarbonInterface|string|null $to
+     * @param string|null $category
+     * @param int|null $timeOfDayStart
+     * @param int|null $timeOfDayEnd
+     * @param string|null $severity
+     * @param float|null $confidenceLevel
      *
      * @return array<string, array{count: int, categories: array<string, int>, statistics: array<string, mixed>}> indexed by H3 cell id
+     * @throws \Psr\SimpleCache\InvalidArgumentException
      */
     public function aggregateByBbox(
         string                      $bboxString,
@@ -150,6 +160,12 @@ class H3AggregationService
 
     /**
      * Apply from/to constraints onto the aggregate query if they are supplied.
+     *
+     * @param Builder $query
+     * @param CarbonInterface|null $from
+     * @param CarbonInterface|null $to
+     *
+     * @return void
      */
     private function applyTemporalFilters(
         Builder          $query,
@@ -165,6 +181,15 @@ class H3AggregationService
         }
     }
 
+    /**
+     * Apply time-of-day filtering to the aggregate query if start or end times are supplied.
+     *
+     * @param Builder $query
+     * @param int|null $timeOfDayStart
+     * @param int|null $timeOfDayEnd
+     *
+     * @return void
+     */
     private function applyTimeOfDayFilter(
         Builder $query,
         ?int $timeOfDayStart,
@@ -195,6 +220,14 @@ class H3AggregationService
         });
     }
 
+    /**
+     * Apply severity filtering to the aggregate query if a severity is supplied.
+     *
+     * @param Builder $query
+     * @param string|null $severity
+     *
+     * @return void
+     */
     private function applySeverityFilter(Builder $query, ?string $severity): void
     {
         if ($severity === null) {
@@ -277,6 +310,18 @@ class H3AggregationService
 
     /**
      * Build a cache key that incorporates the filter parameters and version.
+     *
+     * @param array $boundingBox
+     * @param int $resolution
+     * @param CarbonInterface|null $from
+     * @param CarbonInterface|null $to
+     * @param string|null $category
+     * @param int|null $timeOfDayStart
+     * @param int|null $timeOfDayEnd
+     * @param string|null $severity
+     *
+     * @return string
+     * @throws \Psr\SimpleCache\InvalidArgumentException
      */
     private function buildCacheKey(
         array            $boundingBox,
@@ -289,7 +334,7 @@ class H3AggregationService
         ?string          $severity,
     ): string {
         $normalizedBbox = array_map(
-            static fn(mixed $value): string => number_format((float) $value, 6, '.', ''),
+            static fn (mixed $value): string => number_format((float) $value, 6, '.', ''),
             $boundingBox
         );
 
@@ -318,6 +363,10 @@ class H3AggregationService
 
     /**
      * Retrieve the current cache version, initialising it if necessary.
+     *
+     * @return int
+     *
+     * @throws \Psr\SimpleCache\InvalidArgumentException
      */
     private function getCacheVersion(): int
     {
@@ -328,6 +377,10 @@ class H3AggregationService
 
     /**
      * Increment the cache version so downstream caches pick up fresh aggregates.
+     *
+     * @return int
+     *
+     * @throws \Psr\SimpleCache\InvalidArgumentException
      */
     public function bumpCacheVersion(): int
     {
@@ -345,6 +398,8 @@ class H3AggregationService
 
     /**
      * Expose the current cache version for external callers that need to build compatible keys.
+     *
+     * @throws \Psr\SimpleCache\InvalidArgumentException
      */
     public function cacheVersion(): int
     {
@@ -355,6 +410,9 @@ class H3AggregationService
      * Invalidate cached aggregates for the supplied records, using tag-based flushing when available.
      *
      * @param array<int, array<string, mixed>> $records
+     *
+     * @return void
+     * @throws \Psr\SimpleCache\InvalidArgumentException
      */
     public function invalidateAggregatesForRecords(array $records): void
     {
@@ -381,6 +439,8 @@ class H3AggregationService
 
     /**
      * Determine whether the underlying cache store supports tagging.
+     *
+     * @return bool
      */
     public function supportsTagging(): bool
     {
@@ -399,6 +459,8 @@ class H3AggregationService
 
     /**
      * Ensure the cache version key exists before it is read or mutated.
+     *
+     * @throws \Psr\SimpleCache\InvalidArgumentException
      */
     private function initialiseCacheVersion(): void
     {
@@ -425,7 +487,7 @@ class H3AggregationService
 
             try {
                 $month = CarbonImmutable::parse($occurredAt)->startOfMonth()->format('Y-m');
-            } catch (\Throwable) {
+            } catch (Throwable) {
                 continue;
             }
 
@@ -576,7 +638,7 @@ class H3AggregationService
 
         try {
             return new CarbonImmutable($value);
-        } catch (\Exception) {
+        } catch (Exception) {
             throw new InvalidArgumentException('Unable to parse date value.');
         }
     }

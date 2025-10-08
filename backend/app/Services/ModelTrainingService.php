@@ -17,9 +17,9 @@ use Illuminate\Support\Facades\Storage;
 use Phpml\Classification\DecisionTree;
 use Phpml\Classification\KNearestNeighbors;
 use Phpml\Classification\Linear\LogisticRegression as PhpmlLogisticRegression;
+use Phpml\Classification\SVC;
 use Phpml\Classification\MLPClassifier;
 use Phpml\Classification\NaiveBayes;
-use Phpml\Classification\SVC;
 use Phpml\CrossValidation\RandomSplit;
 use Phpml\Dataset\ArrayDataset;
 use Phpml\Exception\FileException;
@@ -33,8 +33,8 @@ use Phpml\Preprocessing\Imputer;
 use Phpml\Preprocessing\Normalizer;
 use Phpml\SupportVectorMachine\Kernel;
 use ReflectionClass;
-use ReflectionException;
 use RuntimeException;
+use Throwable;
 use TypeError;
 
 class ModelTrainingService
@@ -809,7 +809,7 @@ class ModelTrainingService
      * @param array<string, mixed> $hyperparameters
      * @param array<string, list<mixed>> $userGrid
      *
-     * @return list<array{kernel: string, kernel_options: array<string, float|int>}> 
+     * @return list<array{kernel: string, kernel_options: array<string, float|int>}>
      */
     private function mergeSvcKernelGrid(array $hyperparameters, array $userGrid): array
     {
@@ -916,53 +916,53 @@ class ModelTrainingService
     }
 
     /**
-     * Instantiate the kernel object if the php-ml implementation is available.
+     * Instantiate an SVC if php-ml is available.
      *
-     * @param string $kernel
-     * @param array<string, mixed> $options
+     * @param string $kernel  One of: 'linear', 'polynomial', 'rbf', 'sigmoid'
+     * @param array<string,mixed> $options  Supported: c|C, degree, gamma, coef0, tolerance, cacheSize, shrinking, probability
+     * @return object|null  SVC instance or null if php-ml isn't present
      */
     private function instantiateSvcKernelObject(string $kernel, array $options): ?object
     {
-        $gamma = (float) ($options['gamma'] ?? 0.5);
-        $degree = (int) ($options['degree'] ?? 3);
-        $coef0 = (float) ($options['coef0'] ?? 0.0);
-
-        $candidates = match ($kernel) {
-            'linear' => [
-                [\Phpml\SupportVectorMachine\Kernel\LinearKernel::class, []],
-                [\Phpml\SupportVectorMachine\Kernel\Linear::class, []],
-            ],
-            'polynomial' => [
-                [\Phpml\SupportVectorMachine\Kernel\PolynomialKernel::class, [$degree, $gamma, $coef0]],
-                [\Phpml\SupportVectorMachine\Kernel\Polynomial::class, [$degree, $gamma, $coef0]],
-            ],
-            'sigmoid' => [
-                [\Phpml\SupportVectorMachine\Kernel\SigmoidKernel::class, [$gamma, $coef0]],
-                [\Phpml\SupportVectorMachine\Kernel\Sigmoid::class, [$gamma, $coef0]],
-            ],
-            default => [
-                [\Phpml\SupportVectorMachine\Kernel\RbfKernel::class, [$gamma]],
-                [\Phpml\SupportVectorMachine\Kernel\RBF::class, [$gamma]],
-            ],
-        };
-
-        foreach ($candidates as [$class, $arguments]) {
-            if (! class_exists($class)) {
-                continue;
-            }
-
-            try {
-                return new $class(...$arguments);
-            } catch (ArgumentCountError|TypeError) {
-                continue;
-            }
+        if (!class_exists(SVC::class) || !class_exists(Kernel::class)) {
+            return null;
         }
 
-        return null;
+        // Map kernel name → php-ml Kernel constant
+        $kernelConst = match (strtolower($kernel)) {
+            'linear'     => Kernel::LINEAR,
+            'polynomial' => Kernel::POLYNOMIAL,
+            'sigmoid'    => Kernel::SIGMOID,
+            default      => Kernel::RBF,
+        };
+
+        // Hyper-params (coerce types; provide sane fallbacks)
+        $c        = (float)($options['C'] ?? $options['c'] ?? 1.0);
+        $degree   = (int)  ($options['degree'] ?? 3);
+        $gamma    = (float)($options['gamma']  ?? 0.0);
+        $coef0    = (float)($options['coef0']  ?? 0.0);
+
+        // Trainer/runtime knobs (optional)
+        $tolerance   = (float)($options['tolerance']  ?? 1e-3);
+        $cacheSize   = (int)  ($options['cacheSize']  ?? 100);
+        $shrinking   = (bool) ($options['shrinking']  ?? true);
+        $probability = (bool) ($options['probability'] ?? false);
+
+        try {
+            // SVC signature (php-ml): (int $kernel, float $cost, int $degree, float $gamma, float $coef0, float $tolerance, int $cacheSize, bool $shrinking, bool $probabilityEstimates)
+            return new SVC($kernelConst, $c, $degree, $gamma, $coef0, $tolerance, $cacheSize, $shrinking, $probability);
+        } catch (Throwable $e) {
+            // In case of edge-version signature differences, fall back to minimal signature.
+            try {
+                return new SVC($kernelConst, $c, $degree, $gamma, $coef0);
+            } catch (Throwable) {
+                return null;
+            }
+        }
     }
 
     /**
-     * Normalize kernel-specific options.
+     * Normalise kernel-specific options.
      *
      * @param string $kernel
      * @param array<string, mixed> $options

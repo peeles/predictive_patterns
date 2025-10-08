@@ -34,8 +34,7 @@ class DatasetRecordIngestionService
     public function __construct(
         private readonly H3IndexService $h3IndexService,
         private readonly H3AggregationService $h3AggregationService,
-    )
-    {
+    ) {
         $config = (array)config('dataset_records.ingestion');
         $this->chunkSize = max(1, (int)($config['chunk_size'] ?? 500));
         $this->progressInterval = max(0, (int)($config['progress_interval'] ?? 5000));
@@ -612,7 +611,7 @@ class DatasetRecordIngestionService
 
         if ($existing) {
             $existing = array_flip($existing);
-            $buffer = array_values(array_filter($buffer, static fn(array $row): bool => !isset($existing[$row['id']])));
+            $buffer = array_values(array_filter($buffer, static fn (array $row): bool => !isset($existing[$row['id']])));
         }
 
         $insertable = count($buffer);
@@ -801,8 +800,7 @@ class DatasetRecordIngestionService
         int $invalid,
         int &$nextThreshold,
         bool $force = false
-    ): void
-    {
+    ): void {
         if ($this->progressInterval === 0) {
             return;
         }

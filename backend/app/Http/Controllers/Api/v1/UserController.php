@@ -3,7 +3,6 @@
 namespace App\Http\Controllers\Api\v1;
 
 use App\Enums\Role;
-use App\Http\Controllers\Controller;
 use App\Http\Requests\DeleteUserRequest;
 use App\Http\Requests\ListUsersRequest;
 use App\Http\Requests\StoreUserRequest;
@@ -12,7 +11,6 @@ use App\Http\Requests\UpdateUserRoleRequest;
 use App\Http\Resources\UserCollection;
 use App\Http\Resources\UserResource;
 use App\Models\User;
-use App\Transformers\UserTransformer;
 use Illuminate\Http\JsonResponse;
 use Symfony\Component\HttpFoundation\Response;
 

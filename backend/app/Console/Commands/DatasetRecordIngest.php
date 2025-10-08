@@ -71,7 +71,7 @@ class DatasetRecordIngest extends Command
 
         $chunks = array_chunk($months, $chunkSize);
         foreach ($chunks as $index => $chunk) {
-            $jobs = array_map(fn(string $month) => new IngestDatasetRecords($month, $dryRun), $chunk);
+            $jobs = array_map(fn (string $month) => new IngestDatasetRecords($month, $dryRun), $chunk);
 
             $pendingBatch = Bus::batch($jobs)
                 ->name(sprintf('dataset-record-ingest-%s-%d', now()->format('YmdHis'), $index + 1))

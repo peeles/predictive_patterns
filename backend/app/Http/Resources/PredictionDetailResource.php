@@ -3,12 +3,9 @@
 namespace App\Http\Resources;
 
 use App\Enums\PredictionOutputFormat;
-use App\Enums\PredictionStatus;
-use App\Models\Prediction;
 use App\Models\PredictionOutput;
 use App\Models\ShapValue;
 use Illuminate\Http\Request;
-use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Collection;
 
 class PredictionDetailResource extends PredictionResource

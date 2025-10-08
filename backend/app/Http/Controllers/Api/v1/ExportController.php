@@ -28,8 +28,7 @@ class ExportController extends Controller
         ExportRequest        $request,
         H3AggregationService $aggregationService,
         H3GeometryService    $geometryService
-    ): Response|JsonResponse
-    {
+    ): Response|JsonResponse {
         $validated = $request->validated();
 
         $bbox = (string) ($validated['bbox'] ?? '-180,-90,180,90');
