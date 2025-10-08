@@ -51,12 +51,12 @@ class AuthenticateTest extends TestCase
      */
     public function test_returns_app_url_when_no_login_route_registered(): void
     {
-        config(['app.url' => 'https://example.test']);
+        config(['app.url' => 'http://localhost:8000']);
 
         $middleware = $this->createMiddleware();
         $request = Request::create('/protected', 'GET');
 
-        $this->assertSame('https://example.test', $middleware->callRedirectTo($request));
+        $this->assertSame('http://localhost:8000/login', $middleware->callRedirectTo($request));
     }
 
     /**
