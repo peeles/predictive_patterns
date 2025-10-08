@@ -186,7 +186,7 @@ class AuthController extends BaseController
             return '';
         }
 
-        $decoded = urldecode($refreshToken);
+        $decoded = rawurldecode($refreshToken);
 
         if (str_contains($decoded, '|')) {
             return $decoded;
