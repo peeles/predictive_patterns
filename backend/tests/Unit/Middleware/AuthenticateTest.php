@@ -3,6 +3,8 @@
 namespace Tests\Unit\Middleware;
 
 use App\Http\Middleware\Authenticate;
+use Illuminate\Contracts\Auth\Factory as AuthFactory;
+use Illuminate\Contracts\Container\BindingResolutionException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use Tests\TestCase;
@@ -18,6 +20,9 @@ class AuthenticateTest extends TestCase
         Route::getRoutes()->refreshActionLookups();
     }
 
+    /**
+     * @throws BindingResolutionException
+     */
     public function test_returns_login_route_when_available(): void
     {
         Route::get('/login', static fn () => '')->name('login');
@@ -28,6 +33,9 @@ class AuthenticateTest extends TestCase
         $this->assertSame(route('login'), $middleware->callRedirectTo($request));
     }
 
+    /**
+     * @throws BindingResolutionException
+     */
     public function test_returns_null_for_json_requests(): void
     {
         $middleware = $this->createMiddleware();
@@ -38,6 +46,9 @@ class AuthenticateTest extends TestCase
         $this->assertNull($middleware->callRedirectTo($request));
     }
 
+    /**
+     * @throws BindingResolutionException
+     */
     public function test_returns_app_url_when_no_login_route_registered(): void
     {
         config(['app.url' => 'https://example.test']);
@@ -48,9 +59,19 @@ class AuthenticateTest extends TestCase
         $this->assertSame('https://example.test', $middleware->callRedirectTo($request));
     }
 
+    /**
+     * @throws BindingResolutionException
+     */
     private function createMiddleware(): object
     {
-        return new class () extends Authenticate {
+        $authFactory = $this->app->make(AuthFactory::class);
+
+        return new class ($authFactory) extends Authenticate {
+            public function __construct(AuthFactory $auth)
+            {
+                parent::__construct($auth);
+            }
+
             public function callRedirectTo(Request $request): ?string
             {
                 return $this->redirectTo($request);
