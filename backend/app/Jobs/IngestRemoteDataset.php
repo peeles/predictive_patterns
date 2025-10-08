@@ -31,6 +31,7 @@ use function pathinfo;
 use function sprintf;
 use function strtolower;
 use function trim;
+
 use const PATHINFO_EXTENSION;
 use const PHP_URL_PATH;
 

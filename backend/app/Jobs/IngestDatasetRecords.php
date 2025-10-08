@@ -20,7 +20,9 @@ class IngestDatasetRecords implements ShouldQueue
     use Queueable;
     use SerializesModels;
 
-    public function __construct(public string $yearMonth, public bool $dryRun = false) {}
+    public function __construct(public string $yearMonth, public bool $dryRun = false)
+    {
+    }
 
     /**
      * @param DatasetRecordIngestionService $service

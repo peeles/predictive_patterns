@@ -69,30 +69,26 @@ class ImputerFactory
 
     private static function ensureHasSamples(Imputer $imputer, int $featureCount): void
     {
-        try {
-            $reflection = new ReflectionClass($imputer);
+        $reflection = new ReflectionClass($imputer);
 
-            if (! $reflection->hasProperty('samples')) {
-                return;
-            }
-
-            $property = $reflection->getProperty('samples');
-
-            if (! $property->isPublic()) {
-                $property->setAccessible(true);
-            }
-
-            $current = $property->getValue($imputer);
-
-            if (is_array($current) && $current !== []) {
-                return;
-            }
-
-            $placeholder = array_fill(0, $featureCount, 0.0);
-            $property->setValue($imputer, [$placeholder]);
-        } catch (ReflectionException) {
-            // Ignore reflection failures – the imputer will throw a runtime exception if it cannot be used.
+        if (! $reflection->hasProperty('samples')) {
+            return;
         }
+
+        $property = $reflection->getProperty('samples');
+
+        if (! $property->isPublic()) {
+            $property->setAccessible(true);
+        }
+
+        $current = $property->getValue($imputer);
+
+        if (is_array($current) && $current !== []) {
+            return;
+        }
+
+        $placeholder = array_fill(0, $featureCount, 0.0);
+        $property->setValue($imputer, [$placeholder]);
     }
 
     public static function resolveStrategy(int|string $strategy, mixed $fillValue = 0.0): object
@@ -127,19 +123,19 @@ class ImputerFactory
         $strategyInterface = 'Phpml\\Preprocessing\\Imputer\\Strategy';
 
         if (interface_exists($strategyInterface)) {
-            return new class($fillValue) implements Strategy {
+            return new class ($fillValue) implements Strategy {
                 public function __construct(private readonly mixed $fillValue)
                 {
                 }
 
-                public function replaceValue(array $column): float
+                public function replaceValue(array $currentAxis): float
                 {
                     return (float) $this->fillValue;
                 }
             };
         }
 
-        return new class($fillValue) {
+        return new class ($fillValue) {
             public function __construct(private readonly mixed $fillValue)
             {
             }

@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers\Api\v1;
 
-use App\Http\Controllers\Controller;
 use App\Http\Requests\NaturalLanguageQueryRequest;
 use App\Services\NaturalLanguageQueryService;
 use Illuminate\Http\JsonResponse;

@@ -13,11 +13,19 @@ use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\Routing\Middleware\ThrottleRequests;
 
 return Application::configure(basePath: dirname(__DIR__))
-    ->withProviders([
-        App\Providers\AppServiceProvider::class,
-        App\Providers\AuthServiceProvider::class,
-        App\Providers\HorizonServiceProvider::class,
-    ])
+    ->withProviders((function (): array {
+        $providers = [
+            App\Providers\AppServiceProvider::class,
+            App\Providers\AuthServiceProvider::class,
+            App\Providers\HorizonServiceProvider::class,
+        ];
+
+        if (class_exists(Pest\Laravel\PestServiceProvider::class)) {
+            $providers[] = Pest\Laravel\PestServiceProvider::class;
+        }
+
+        return $providers;
+    })())
     ->withRouting(
         web: __DIR__.'/../routes/web.php',
         api: __DIR__.'/../routes/api.php',

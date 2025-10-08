@@ -10,8 +10,10 @@ use Carbon\CarbonImmutable;
 use InvalidArgumentException;
 use Throwable;
 
-class DatasetMcpServer {
-    public function run(): void {
+class DatasetMcpServer
+{
+    public function run(): void
+    {
         while (($line = fgets(STDIN)) !== false) {
             $resp = $this->dispatch($line);
             fwrite(STDOUT, json_encode($resp, JSON_UNESCAPED_SLASHES).PHP_EOL);
@@ -19,12 +21,13 @@ class DatasetMcpServer {
         }
     }
 
-    private function dispatch(string $raw): array {
+    private function dispatch(string $raw): array
+    {
         try {
             $msg = json_decode(trim($raw), true, 512, JSON_THROW_ON_ERROR);
             $id  = $msg['id'] ?? null;
-            $tool= $msg['tool'] ?? null;
-            $args= $msg['arguments'] ?? [];
+            $tool = $msg['tool'] ?? null;
+            $args = $msg['arguments'] ?? [];
 
             return [
                 'id' => $id,
@@ -43,7 +46,8 @@ class DatasetMcpServer {
         }
     }
 
-    private function aggregate(array $a): array {
+    private function aggregate(array $a): array
+    {
         $bbox = $a['bbox'] ?? throw new InvalidArgumentException('bbox required');
         $res  = (int)($a['resolution'] ?? 7);
         $from = $a['from'] ?? null;
@@ -70,10 +74,11 @@ class DatasetMcpServer {
                 'statistics' => $data['statistics'] ?? [],
             ];
         }
-        return ['resolution'=>$res,'cells'=>$cells];
+        return ['resolution' => $res,'cells' => $cells];
     }
 
-    private function ingest(array $a): array {
+    private function ingest(array $a): array
+    {
         $dryRun = (bool)($a['dry_run'] ?? false);
         $months = [];
 
@@ -116,7 +121,8 @@ class DatasetMcpServer {
         return ['status' => 'queued', 'months' => $months, 'dry_run' => $dryRun];
     }
 
-    private function normalizeMonth(string $value): string {
+    private function normalizeMonth(string $value): string
+    {
         if (!preg_match('/^\d{4}-\d{2}$/', $value)) {
             throw new InvalidArgumentException('ym required YYYY-MM');
         }
@@ -129,7 +135,8 @@ class DatasetMcpServer {
         return $date->format('Y-m');
     }
 
-    private function expandRange(string $from, string $to): array {
+    private function expandRange(string $from, string $to): array
+    {
         $start = CarbonImmutable::createFromFormat('Y-m', $this->normalizeMonth($from));
         $end = CarbonImmutable::createFromFormat('Y-m', $this->normalizeMonth($to));
 
@@ -148,9 +155,10 @@ class DatasetMcpServer {
         return $months;
     }
 
-    private function export(array $a): array {
+    private function export(array $a): array
+    {
         $res = (int)($a['resolution'] ?? 7);
-        $bbox= $a['bbox'] ?? throw new InvalidArgumentException('bbox required');
+        $bbox = $a['bbox'] ?? throw new InvalidArgumentException('bbox required');
         $agg = app(H3AggregationService::class)->aggregateByBbox(
             $bbox,
             $res,
@@ -174,10 +182,11 @@ class DatasetMcpServer {
                 'geometry' => null,
             ];
         }
-        return ['type'=>'FeatureCollection','features'=>$features];
+        return ['type' => 'FeatureCollection','features' => $features];
     }
 
-    private function categories(): array {
+    private function categories(): array
+    {
         $categories = DatasetRecord::query()
             ->select('category')
             ->distinct()
@@ -191,7 +200,8 @@ class DatasetMcpServer {
         return ['categories' => $categories];
     }
 
-    private function ingestedMonths(): array {
+    private function ingestedMonths(): array
+    {
         $rows = DatasetRecord::query()
             ->selectRaw("DATE_FORMAT(occurred_at, '%Y-%m') as ym, COUNT(*) as c")
             ->groupBy('ym')
@@ -203,7 +213,8 @@ class DatasetMcpServer {
         return ['months' => $rows];
     }
 
-    private function topCells(array $args): array {
+    private function topCells(array $args): array
+    {
         $bbox = $args['bbox'] ?? '-180,-90,180,90';
         $resolution = (int)($args['resolution'] ?? 7);
         $limit = max(1, (int)($args['limit'] ?? 5));
@@ -232,7 +243,7 @@ class DatasetMcpServer {
             ];
         }
 
-        usort($cells, static fn($a, $b) => $b['count'] <=> $a['count']);
+        usort($cells, static fn ($a, $b) => $b['count'] <=> $a['count']);
         $cells = array_slice($cells, 0, $limit);
 
         return [

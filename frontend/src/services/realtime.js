@@ -1,7 +1,42 @@
-import { echo } from '../plugins/echo'
+import { echo, updateEchoAuthHeaders } from '../plugins/echo'
+import { useAuthStore } from '../stores/auth'
 
 const connectionListeners = new Set()
 let connectionHandlersBound = false
+let lastAppliedAuthToken = null
+
+function extractBearerToken(rawToken) {
+    if (!rawToken) {
+        return ''
+    }
+
+    if (typeof rawToken === 'string') {
+        return rawToken
+    }
+
+    if (typeof rawToken === 'object' && 'value' in rawToken) {
+        const value = rawToken.value
+        return typeof value === 'string' ? value : ''
+    }
+
+    return ''
+}
+
+function ensureAuthHeaders() {
+    try {
+        const authStore = useAuthStore()
+        const token = extractBearerToken(authStore?.token)
+
+        if (token === lastAppliedAuthToken) {
+            return
+        }
+
+        updateEchoAuthHeaders(token)
+        lastAppliedAuthToken = token
+    } catch (error) {
+        console.warn('Unable to synchronize realtime auth headers', error)
+    }
+}
 
 function notifyConnectionListeners(state) {
     for (const listener of connectionListeners) {
@@ -26,6 +61,8 @@ function ensureConnectionHandlers() {
     }
 
     connectionHandlersBound = true
+
+    ensureAuthHeaders()
 
     connection.bind('state_change', ({ current }) => {
         notifyConnectionListeners({ state: current })
@@ -79,6 +116,8 @@ export function subscribeToChannel(channelName, options = {}) {
     if (!channelName) {
         throw new Error('Channel name is required')
     }
+
+    ensureAuthHeaders()
 
     const { baseName, type } = resolveChannel(channelName)
 

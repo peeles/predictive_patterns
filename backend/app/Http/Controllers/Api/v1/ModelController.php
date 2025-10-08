@@ -19,7 +19,6 @@ use App\Services\IdempotencyService;
 use App\Services\ModelStatusService;
 use App\Services\ModelRegistry;
 use App\Support\InteractsWithPagination;
-use App\Transformers\ModelTransformer;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Storage;
@@ -297,7 +296,7 @@ class ModelController extends BaseController
 
         return $this->successResponse([
             'message' => 'Model rolled back successfully',
-            'model' => ModelTransformer::transform($model->fresh(['trainingRuns'])),
+            'model' => new ModelResource($model->fresh(['trainingRuns'])),
         ]);
     }
 
@@ -315,8 +314,7 @@ class ModelController extends BaseController
         TrainModelRequest $request,
         ModelStatusService $statusService,
         IdempotencyService $idempotencyService,
-    ): JsonResponse
-    {
+    ): JsonResponse {
         $validated = $request->validated();
         $model = PredictiveModel::query()->findOrFail($validated['model_id']);
 
@@ -380,8 +378,7 @@ class ModelController extends BaseController
         EvaluateModelRequest $request,
         ModelStatusService $statusService,
         IdempotencyService $idempotencyService,
-    ): JsonResponse
-    {
+    ): JsonResponse {
         $model = PredictiveModel::query()->findOrFail($id);
 
         $this->authorize('evaluate', $model);

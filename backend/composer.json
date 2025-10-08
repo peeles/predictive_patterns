@@ -15,19 +15,21 @@
         "laravel/sanctum": "^4.2",
         "laravel/tinker": "^2.10.1",
         "php-ai/php-ml": "^0.10.0",
-        "pusher/pusher-php-server": "^7.2"
+        "pusher/pusher-php-server": "^7.2",
+        "ext-zip": "*"
     },
     "require-dev": {
         "fakerphp/faker": "^1.23",
+        "friendsofphp/php-cs-fixer": "^3.88",
+        "larastan/larastan": "^3.7",
         "laravel/pail": "^1.2.3",
         "laravel/pint": "^1.25.1",
         "laravel/sail": "^1.46",
         "mockery/mockery": "^1.6",
         "nunomaduro/collision": "^8.8.2",
-        "larastan/larastan": "^3.7",
-        "phpstan/phpstan": "^2.1",
-        "pestphp/pest": "^3.8.2",
-        "pestphp/pest-plugin-laravel": "^3.0"
+        "pestphp/pest": "^3.8",
+        "pestphp/pest-plugin-laravel": "^3.2",
+        "phpstan/phpstan": "^2.1"
     },
     "autoload": {
         "psr-4": {
