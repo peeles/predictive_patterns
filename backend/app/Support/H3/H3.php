@@ -15,11 +15,29 @@ class H3
 
     private ?string $boundaryScript = null;
 
+    /**
+     * Convert latitude and longitude to an H3 index at the specified resolution.
+     *
+     * @param float $lat
+     * @param float $lng
+     * @param int $resolution
+     *
+     * @return string
+     */
     public function latLngToCell(float $lat, float $lng, int $resolution): string
     {
         return $this->geoToH3($lat, $lng, $resolution);
     }
 
+    /**
+     * Convert latitude and longitude to an H3 index at the specified resolution.
+     *
+     * @param float $lat
+     * @param float $lng
+     * @param int $resolution
+     *
+     * @return string
+     */
     public function geoToH3(float $lat, float $lng, int $resolution): string
     {
         $script = $this->resolveIndexScript();
@@ -51,6 +69,14 @@ class H3
         return $output;
     }
 
+    /**
+     * Get the boundary of an H3 cell.
+     *
+     * @param string $index
+     * @param bool $geoJson
+     *
+     * @return array[]
+     */
     public function cellToBoundary(string $index, bool $geoJson = false): array
     {
         $boundary = $this->fetchBoundary($index);
@@ -68,17 +94,34 @@ class H3
         );
     }
 
-    public function cellToGeoBoundary(string $index): array
+    /**
+     * Get the boundary of an H3 cell in GeoJSON format.
+     *
+     * @param string $index
+     * @param bool $geoJson
+     *
+     * @return array[]
+     */
+    public function cellToGeoBoundary(string $index, bool $geoJson = false): array
     {
-        return $this->cellToBoundary($index, false);
-    }
-
-    public function h3ToGeoBoundary(string $index): array
-    {
-        return $this->cellToGeoBoundary($index);
+        return $this->cellToBoundary($index, $geoJson);
     }
 
     /**
+     * Fetch the boundary vertices from the Node.js helper script in GeoJSON format.
+     *
+     * @param string $index
+     *
+     * @return list<array{0: float, 1: float}>
+     */
+    public function h3ToGeoBoundary(string $index): array
+    {
+        return $this->cellToGeoBoundary($index, true);
+    }
+
+    /**
+     * Fetch the boundary vertices from the Node.js helper script.
+     *
      * @return list<array{0: float, 1: float}>
      */
     private function fetchBoundary(string $index): array
@@ -124,6 +167,11 @@ class H3
         );
     }
 
+    /**
+     * Resolve the path to the Node.js script used to convert lat/lng to H3 index.
+     *
+     * @return string
+     */
     private function resolveIndexScript(): string
     {
         if ($this->indexScript !== null) {
@@ -133,6 +181,11 @@ class H3
         return $this->indexScript = $this->locateScript('H3-index.cjs');
     }
 
+    /**
+     * Resolve the path to the Node.js script used to fetch H3 cell boundaries.
+     *
+     * @return string
+     */
     private function resolveBoundaryScript(): string
     {
         if ($this->boundaryScript !== null) {
@@ -142,6 +195,13 @@ class H3
         return $this->boundaryScript = $this->locateScript('h3-boundary.cjs');
     }
 
+    /**
+     * Locate the specified Node.js script file in known locations.
+     *
+     * @param string $fileName
+     *
+     * @return string
+     */
     private function locateScript(string $fileName): string
     {
         $candidates = [];

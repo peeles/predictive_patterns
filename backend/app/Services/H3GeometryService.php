@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Support\H3\H3;
 use Closure;
 use JsonException;
 use RuntimeException;
@@ -91,44 +92,18 @@ class H3GeometryService
      */
     private function resolveBoundaryResolver(): array
     {
-        if (class_exists('\\H3\\H3')) {
-            $h3 = new \App\Support\H3\H3();
+        $h3 = new H3();
 
-            if (method_exists($h3, 'cellToBoundary')) {
-                return [fn (string $index): array => $h3->cellToBoundary($index, true), true];
-            }
-
-            if (method_exists($h3, 'cellToGeoBoundary')) {
-                return [fn (string $index): array => $h3->cellToGeoBoundary($index), false];
-            }
-
-            if (method_exists($h3, 'h3ToGeoBoundary')) {
-                return [fn (string $index): array => $h3->h3ToGeoBoundary($index), false];
-            }
+        if (method_exists($h3, 'cellToBoundary')) {
+            return [fn (string $index): array => $h3->cellToBoundary($index, true), true];
         }
 
-        if (function_exists('H3\\cellToBoundary')) {
-            return [fn (string $index): array => \H3\cellToBoundary($index, true), true];
+        if (method_exists($h3, 'cellToGeoBoundary')) {
+            return [fn (string $index): array => $h3->cellToGeoBoundary($index), false];
         }
 
-        if (function_exists('H3\\cellToGeoBoundary')) {
-            return [fn (string $index): array => \H3\cellToGeoBoundary($index), false];
-        }
-
-        if (function_exists('H3\\h3ToGeoBoundary')) {
-            return [fn (string $index): array => \H3\h3ToGeoBoundary($index), false];
-        }
-
-        if (function_exists('cellToBoundary')) {
-            return [fn (string $index): array => cellToBoundary($index, true), true];
-        }
-
-        if (function_exists('cellToGeoBoundary')) {
-            return [fn (string $index): array => cellToGeoBoundary($index), false];
-        }
-
-        if (function_exists('h3ToGeoBoundary')) {
-            return [fn (string $index): array => h3ToGeoBoundary($index), false];
+        if (method_exists($h3, 'h3ToGeoBoundary')) {
+            return [fn (string $index): array => $h3->h3ToGeoBoundary($index), false];
         }
 
         if ($this->nodeBoundaryHelperAvailable()) {
@@ -138,6 +113,11 @@ class H3GeometryService
         throw new RuntimeException('H3 boundary conversion is not available');
     }
 
+    /**
+     * Determine if the Node.js boundary helper script is available.
+     *
+     * @return bool
+     */
     private function nodeBoundaryHelperAvailable(): bool
     {
         $script = $this->nodeBoundaryScript();
@@ -145,12 +125,19 @@ class H3GeometryService
         return is_file($script) && is_readable($script);
     }
 
+    /**
+     * Get the path to the Node.js boundary helper script.
+     *
+     * @return string
+     */
     private function nodeBoundaryScript(): string
     {
         return base_path('scripts/h3-boundary.cjs');
     }
 
     /**
+     * Build a boundary resolver that calls out to a Node.js script.
+     *
      * @return Closure(string): array
      */
     private function buildNodeBoundaryResolver(): Closure

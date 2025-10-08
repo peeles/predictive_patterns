@@ -8,9 +8,7 @@ use JsonException;
 use RuntimeException;
 use Symfony\Component\Process\InputStream;
 use Symfony\Component\Process\Process;
-
-use function H3\geoToH3;
-use function H3\latLngToCell;
+use Throwable;
 
 /**
  * Provides a thin abstraction around whichever H3 PHP binding is installed.
@@ -133,20 +131,12 @@ class H3IndexService
             return fn (float $lat, float $lng, int $res): string => $h3->geoToH3($lat, $lng, $res);
         }
 
-        if (function_exists('H3\\latLngToCell')) {
-            return fn (float $lat, float $lng, int $res): string => latLngToCell($lat, $lng, $res);
-        }
-
-        if (function_exists('H3\\geoToH3')) {
-            return fn (float $lat, float $lng, int $res): string => geoToH3($lat, $lng, $res);
-        }
-
-        if (function_exists('latLngToCell')) {
-            return fn (float $lat, float $lng, int $res): string => latLngToCell($lat, $lng, $res);
+        if (function_exists( 'latLngToCell')) {
+            return fn (float $lat, float $lng, int $res): string => $h3->latLngToCell($lat, $lng, $res);
         }
 
         if (function_exists('geoToH3')) {
-            return fn (float $lat, float $lng, int $res): string => geoToH3($lat, $lng, $res);
+            return fn (float $lat, float $lng, int $res): string => $h3->geoToH3($lat, $lng, $res);
         }
 
         if ($this->nodeIndexHelperAvailable()) {
@@ -379,7 +369,7 @@ class H3IndexService
 
         try {
             $process->start();
-        } catch (\Throwable) {
+        } catch (Throwable) {
             $this->shutdownNodeDaemon();
 
             return false;

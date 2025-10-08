@@ -19,7 +19,6 @@ use App\Services\IdempotencyService;
 use App\Services\ModelStatusService;
 use App\Services\ModelRegistry;
 use App\Support\InteractsWithPagination;
-use App\Transformers\ModelTransformer;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Storage;
@@ -297,7 +296,7 @@ class ModelController extends BaseController
 
         return $this->successResponse([
             'message' => 'Model rolled back successfully',
-            'model' => ModelTransformer::transform($model->fresh(['trainingRuns'])),
+            'model' => new ModelResource($model->fresh(['trainingRuns'])),
         ]);
     }
 
