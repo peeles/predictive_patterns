@@ -530,8 +530,26 @@ class ModelTrainingService
                     null
                 );
 
-                $classifier->train($trainSamples, $trainLabels);
-                $predictions = $classifier->predict($testSamples);
+                try {
+                    $classifier->train($trainSamples, $trainLabels);
+                } catch (InvalidArgumentException $exception) {
+                    if ($this->isInsufficientSampleException($exception)) {
+                        continue;
+                    }
+
+                    throw $exception;
+                }
+
+                try {
+                    $predictions = $classifier->predict($testSamples);
+                } catch (InvalidArgumentException $exception) {
+                    if ($this->isInsufficientSampleException($exception)) {
+                        continue;
+                    }
+
+                    throw $exception;
+                }
+
                 $classification = ClassificationReportGenerator::generate($testLabels, $predictions);
                 $report = $classification['report'];
                 $scores[] = $report['accuracy'];
