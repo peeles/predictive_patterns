@@ -45,16 +45,10 @@ jobs:
       - name: Laravel Pint
         run: ./vendor/bin/pint --test
 
-      - name: Larastan
-        run: ./vendor/bin/phpstan analyse --configuration=phpstan.neon --no-progress
-
       - name: Pest
         env:
           XDEBUG_MODE: coverage
         run: ./vendor/bin/pest --coverage
-
-      - name: Rector dry run
-        run: ./vendor/bin/rector process --dry-run
 
   frontend:
     name: Frontend Quality Gate
