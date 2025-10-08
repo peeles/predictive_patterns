@@ -72,12 +72,12 @@ class IngestRemoteDatasetTest extends TestCase
             'dataset_id' => $dataset->id,
         ]);
 
-        Event::assertDispatched(DatasetStatusUpdated::class, function ($event) use ($dataset) {
-            return $event->datasetId === $dataset->id && $event->status === DatasetStatus::Processing->value;
+        Event::assertDispatched(DatasetStatusUpdated::class, function (DatasetStatusUpdated $event) use ($dataset) {
+            return $event->datasetId === $dataset->id && $event->status === DatasetStatus::Processing;
         });
 
-        Event::assertDispatched(DatasetStatusUpdated::class, function ($event) use ($dataset) {
-            return $event->datasetId === $dataset->id && $event->status === DatasetStatus::Ready->value;
+        Event::assertDispatched(DatasetStatusUpdated::class, function (DatasetStatusUpdated $event) use ($dataset) {
+            return $event->datasetId === $dataset->id && $event->status === DatasetStatus::Ready;
         });
 
         Event::assertDispatchedTimes(DatasetStatusUpdated::class, 2);
@@ -128,12 +128,12 @@ class IngestRemoteDatasetTest extends TestCase
             $this->assertSame([], Storage::disk('local')->allFiles());
         }
 
-        Event::assertDispatched(DatasetStatusUpdated::class, function ($event) use ($dataset) {
-            return $event->datasetId === $dataset->id && $event->status === DatasetStatus::Processing->value;
+        Event::assertDispatched(DatasetStatusUpdated::class, function (DatasetStatusUpdated $event) use ($dataset) {
+            return $event->datasetId === $dataset->id && $event->status === DatasetStatus::Processing;
         });
 
-        Event::assertDispatched(DatasetStatusUpdated::class, function ($event) use ($dataset) {
-            return $event->datasetId === $dataset->id && $event->status === DatasetStatus::Failed->value;
+        Event::assertDispatched(DatasetStatusUpdated::class, function (DatasetStatusUpdated $event) use ($dataset) {
+            return $event->datasetId === $dataset->id && $event->status === DatasetStatus::Failed;
         });
 
         Event::assertDispatchedTimes(DatasetStatusUpdated::class, 2);

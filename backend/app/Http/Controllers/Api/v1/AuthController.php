@@ -186,12 +186,14 @@ class AuthController extends BaseController
             return '';
         }
 
-        if (str_contains($refreshToken, '|')) {
-            return $refreshToken;
+        $decoded = rawurldecode($refreshToken);
+
+        if (str_contains($decoded, '|')) {
+            return $decoded;
         }
 
         try {
-            $decrypted = Crypt::decryptString($refreshToken);
+            $decrypted = Crypt::decryptString($decoded);
 
             return str_contains($decrypted, '|') ? $decrypted : '';
         } catch (DecryptException) {

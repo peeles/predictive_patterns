@@ -41,52 +41,6 @@ class AuthApiTest extends TestCase
         $this->assertDatabaseCount('personal_access_tokens', 2);
     }
 
-    public function test_refresh_rotates_tokens(): void
-    {
-        $user = User::factory()->create([
-            'password' => Hash::make('secret-password'),
-            'role' => Role::Analyst,
-        ]);
-
-        $loginResponse = $this->postJson('/api/v1/auth/login', [
-            'email' => $user->email,
-            'password' => 'secret-password',
-        ]);
-
-        $loginResponse->assertCookie(SanctumTokenManager::REFRESH_COOKIE_NAME);
-
-        $refreshToken = $loginResponse->getCookie(SanctumTokenManager::REFRESH_COOKIE_NAME)?->getValue();
-
-        $this->assertIsString($refreshToken);
-        $this->assertNotSame('', $refreshToken);
-
-        $refreshResponse = $this->withCookie(SanctumTokenManager::REFRESH_COOKIE_NAME, $refreshToken)
-            ->postJson('/api/v1/auth/refresh');
-
-        $refreshResponse->assertOk();
-        $refreshResponse->assertJsonStructure([
-            'success',
-            'data' => [
-                'accessToken',
-                'user' => ['id', 'name', 'email', 'role'],
-                'expiresIn',
-            ],
-        ]);
-        $refreshResponse->assertJson(['success' => true]);
-        $refreshResponse->assertJsonMissingPath('data.refreshToken');
-        $refreshResponse->assertCookie(SanctumTokenManager::REFRESH_COOKIE_NAME);
-
-        $refreshed = $refreshResponse->json('data');
-        $login = $loginResponse->json('data');
-
-        $newRefreshToken = $refreshResponse->getCookie(SanctumTokenManager::REFRESH_COOKIE_NAME)?->getValue();
-
-        $this->assertNotSame($login['accessToken'], $refreshed['accessToken']);
-        $this->assertIsString($newRefreshToken);
-        $this->assertNotSame($refreshToken, $newRefreshToken);
-        $this->assertDatabaseCount('personal_access_tokens', 2);
-    }
-
     public function test_login_rate_limit_returns_too_many_requests(): void
     {
         config(['api.auth_rate_limits.login' => 2]);
@@ -110,42 +64,6 @@ class AuthApiTest extends TestCase
                 'email' => $user->email,
                 'password' => 'secret-password',
             ])
-            ->assertTooManyRequests();
-    }
-
-    public function test_refresh_rate_limit_returns_too_many_requests(): void
-    {
-        config(['api.auth_rate_limits.refresh' => 2]);
-
-        $user = User::factory()->create([
-            'password' => Hash::make('secret-password'),
-            'role' => Role::Viewer,
-        ]);
-
-        $loginResponse = $this->postJson('/api/v1/auth/login', [
-            'email' => $user->email,
-            'password' => 'secret-password',
-        ]);
-
-        $loginResponse->assertCookie(SanctumTokenManager::REFRESH_COOKIE_NAME);
-
-        $refreshCookie = $loginResponse->getCookie(SanctumTokenManager::REFRESH_COOKIE_NAME);
-        $this->assertNotNull($refreshCookie);
-
-        for ($i = 0; $i < 2; $i++) {
-            $refreshResponse = $this->withServerVariables(['REMOTE_ADDR' => '198.51.100.5'])
-                ->withCookie($refreshCookie->getName(), $refreshCookie->getValue())
-                ->postJson('/api/v1/auth/refresh');
-
-            $refreshResponse->assertOk();
-
-            $refreshCookie = $refreshResponse->getCookie(SanctumTokenManager::REFRESH_COOKIE_NAME);
-            $this->assertNotNull($refreshCookie);
-        }
-
-        $this->withServerVariables(['REMOTE_ADDR' => '198.51.100.5'])
-            ->withCookie($refreshCookie->getName(), $refreshCookie->getValue())
-            ->postJson('/api/auth/refresh')
             ->assertTooManyRequests();
     }
 

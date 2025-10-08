@@ -31,6 +31,34 @@ const pusherCluster = normalizeEnv(import.meta.env.VITE_PUSHER_APP_CLUSTER) ?? '
 const apiBaseUrl = normalizeEnv(import.meta.env.VITE_API_URL)
 const explicitAuthEndpoint = normalizeEnv(import.meta.env.VITE_PUSHER_AUTH_ENDPOINT)
 
+const baseAuthHeaders = Object.freeze({
+  'X-Requested-With': 'XMLHttpRequest',
+  Accept: 'application/json',
+})
+
+const sanitizeToken = (token) => {
+  if (typeof token !== 'string') {
+    return ''
+  }
+
+  const trimmed = token.trim()
+
+  return trimmed.startsWith('Bearer ') ? trimmed : trimmed ? `Bearer ${trimmed}` : ''
+}
+
+const buildAuthHeaders = (token) => {
+  const headers = { ...baseAuthHeaders }
+  const bearerToken = sanitizeToken(token)
+
+  if (bearerToken) {
+    headers.Authorization = bearerToken
+  } else {
+    delete headers.Authorization
+  }
+
+  return headers
+}
+
 const resolveScheme = () => {
   if (pusherScheme) {
     return pusherScheme
@@ -109,6 +137,9 @@ const echoOptions = {
   disableStats: true,
   authEndpoint: resolveAuthEndpoint(),
   withCredentials: true,
+  auth: {
+    headers: buildAuthHeaders(),
+  },
 }
 
 if (resolvedHost) {
@@ -124,3 +155,39 @@ window.Pusher = Pusher
 export const echo = new Echo(echoOptions)
 
 window.Echo = echo
+
+export const updateEchoAuthHeaders = (token = '') => {
+  const headers = buildAuthHeaders(token)
+
+  if (!echo || !echo.connector) {
+    return headers
+  }
+
+  const connector = echo.connector
+  const options = connector.options ?? {}
+  const authOptions = { ...(options.auth ?? {}) }
+  const existingHeaders = { ...(authOptions.headers ?? {}) }
+
+  authOptions.headers = { ...existingHeaders, ...headers }
+  connector.options = { ...options, auth: authOptions }
+
+  if (echo.options) {
+    const echoAuth = { ...(echo.options.auth ?? {}) }
+    const echoHeaders = { ...(echoAuth.headers ?? {}) }
+    echoAuth.headers = { ...echoHeaders, ...headers }
+    echo.options.auth = echoAuth
+  }
+
+  const pusher = connector.pusher ?? (connector.connection ? connector.connection.pusher : null)
+
+  if (pusher) {
+    const pusherConfig = pusher.config ?? {}
+    const pusherAuth = { ...(pusherConfig.auth ?? {}) }
+    const pusherHeaders = { ...(pusherAuth.headers ?? {}) }
+
+    pusherAuth.headers = { ...pusherHeaders, ...headers }
+    pusher.config = { ...pusherConfig, auth: pusherAuth }
+  }
+
+  return headers
+}

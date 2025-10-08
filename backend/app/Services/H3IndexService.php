@@ -131,7 +131,7 @@ class H3IndexService
             return fn (float $lat, float $lng, int $res): string => $h3->geoToH3($lat, $lng, $res);
         }
 
-        if (function_exists( 'latLngToCell')) {
+        if (function_exists('latLngToCell')) {
             return fn (float $lat, float $lng, int $res): string => $h3->latLngToCell($lat, $lng, $res);
         }
 
