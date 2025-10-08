@@ -6,5 +6,4 @@ use Illuminate\Cookie\Middleware\EncryptCookies as BaseEncryptCookies;
 
 class EncryptCookies extends BaseEncryptCookies
 {
-
 }

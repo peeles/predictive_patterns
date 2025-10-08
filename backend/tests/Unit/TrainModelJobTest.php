@@ -141,7 +141,7 @@ class TrainModelJobTest extends TestCase
         $this->assertEquals(ModelStatus::Active, $model->status);
         $this->assertSame('svc', $model->hyperparameters['model_type']);
         $this->assertSame('svc', $run->hyperparameters['model_type']);
-        $this->assertContainsEquals( $model->hyperparameters['kernel'], ['linear', 'poly', 'rbf', 'sigmoid', 'precomputed']);
+        $this->assertContainsEquals($model->hyperparameters['kernel'], ['linear', 'poly', 'rbf', 'sigmoid', 'precomputed']);
         $this->assertArrayHasKey('cost', $model->hyperparameters);
         $this->assertArrayHasKey('tolerance', $model->hyperparameters);
     }
