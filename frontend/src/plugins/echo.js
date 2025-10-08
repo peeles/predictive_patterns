@@ -1,5 +1,6 @@
 import Echo from 'laravel-echo'
 import Pusher from 'pusher-js'
+import { getCookie } from '../utils/cookies'
 
 const normalizeEnv = (value) => {
   if (typeof value !== 'string') {
@@ -30,6 +31,8 @@ const pusherScheme = normalizeEnv(import.meta.env.VITE_PUSHER_SCHEME)
 const pusherCluster = normalizeEnv(import.meta.env.VITE_PUSHER_APP_CLUSTER) ?? 'mt1'
 const apiBaseUrl = normalizeEnv(import.meta.env.VITE_API_URL)
 const explicitAuthEndpoint = normalizeEnv(import.meta.env.VITE_PUSHER_AUTH_ENDPOINT)
+const xsrfCookieName = normalizeEnv(import.meta.env.VITE_XSRF_COOKIE_NAME) ?? 'XSRF-TOKEN'
+const xsrfHeaderName = normalizeEnv(import.meta.env.VITE_XSRF_HEADER_NAME) ?? 'X-XSRF-TOKEN'
 
 const baseAuthHeaders = Object.freeze({
   'X-Requested-With': 'XMLHttpRequest',
@@ -46,14 +49,34 @@ const sanitizeToken = (token) => {
   return trimmed.startsWith('Bearer ') ? trimmed : trimmed ? `Bearer ${trimmed}` : ''
 }
 
-const buildAuthHeaders = (token) => {
+const resolveXsrfToken = () => {
+  const rawToken = getCookie(xsrfCookieName)
+  if (!rawToken) {
+    return ''
+  }
+
+  try {
+    return decodeURIComponent(rawToken)
+  } catch {
+    return rawToken
+  }
+}
+
+export const buildEchoAuthHeaders = (token = '') => {
   const headers = { ...baseAuthHeaders }
   const bearerToken = sanitizeToken(token)
+  const xsrfToken = resolveXsrfToken()
 
   if (bearerToken) {
     headers.Authorization = bearerToken
   } else {
     delete headers.Authorization
+  }
+
+  if (xsrfToken) {
+    headers[xsrfHeaderName] = xsrfToken
+  } else {
+    delete headers[xsrfHeaderName]
   }
 
   return headers
@@ -138,7 +161,7 @@ const echoOptions = {
   authEndpoint: resolveAuthEndpoint(),
   withCredentials: true,
   auth: {
-    headers: buildAuthHeaders(),
+    headers: buildEchoAuthHeaders(),
   },
 }
 
@@ -157,7 +180,7 @@ export const echo = new Echo(echoOptions)
 window.Echo = echo
 
 export const updateEchoAuthHeaders = (token = '') => {
-  const headers = buildAuthHeaders(token)
+  const headers = buildEchoAuthHeaders(token)
 
   if (!echo || !echo.connector) {
     return headers

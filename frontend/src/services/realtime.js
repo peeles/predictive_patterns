@@ -1,9 +1,9 @@
-import { echo, updateEchoAuthHeaders } from '../plugins/echo'
+import {buildEchoAuthHeaders, echo, updateEchoAuthHeaders} from '../plugins/echo'
 import { useAuthStore } from '../stores/auth'
 
 const connectionListeners = new Set()
 let connectionHandlersBound = false
-let lastAppliedAuthToken = null
+let lastAppliedAuthSignature = null
 
 function extractBearerToken(rawToken) {
     if (!rawToken) {
@@ -27,12 +27,15 @@ function ensureAuthHeaders() {
         const authStore = useAuthStore()
         const token = extractBearerToken(authStore?.token)
 
-        if (token === lastAppliedAuthToken) {
+        const headers = buildEchoAuthHeaders(token)
+        const signature = JSON.stringify(headers)
+
+        if (signature === lastAppliedAuthSignature) {
             return
         }
 
         updateEchoAuthHeaders(token)
-        lastAppliedAuthToken = token
+        lastAppliedAuthSignature = token
     } catch (error) {
         console.warn('Unable to synchronize realtime auth headers', error)
     }
