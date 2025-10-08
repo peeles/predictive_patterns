@@ -929,6 +929,7 @@ class ModelTrainingService
 
         return [
             'type' => $allowed[$kernel],
+            'options' => $normalizedOptions,
             'instance' => $instance,
         ];
     }
@@ -1097,7 +1098,7 @@ class ModelTrainingService
     {
         $cost = (float) ($params['cost'] ?? $defaults['cost'] ?? 1.0);
         $tolerance = (float) ($params['tolerance'] ?? $defaults['tolerance'] ?? 0.001);
-        $cacheSize = (float) ($params['cache_size'] ?? $defaults['cache_size'] ?? 100.0);
+        $cacheSize = (int) round((float) ($params['cache_size'] ?? $defaults['cache_size'] ?? 100.0));
         $shrinking = $this->normalizeBoolean($params['shrinking'] ?? $defaults['shrinking'] ?? true, true);
         $probabilityEstimates = $this->normalizeBoolean(
             $params['probability_estimates'] ?? $defaults['probability_estimates'] ?? true,
@@ -1116,15 +1117,24 @@ class ModelTrainingService
         }
 
         $kernel = $this->resolveSvcKernel((string) $kernelType, $kernelOptions);
+        $resolvedKernelOptions = $kernel['options'] ?? [];
+
+        $degree = (int) ($resolvedKernelOptions['degree'] ?? 3);
+        $gamma = array_key_exists('gamma', $resolvedKernelOptions)
+            ? (float) $resolvedKernelOptions['gamma']
+            : null;
+        $coef0 = (float) ($resolvedKernelOptions['coef0'] ?? 0.0);
 
         return new SVC(
             $kernel['type'],
             $cost,
+            $degree,
+            $gamma,
+            $coef0,
             $tolerance,
             $cacheSize,
             $shrinking,
-            $probabilityEstimates,
-            $kernel['instance']
+            $probabilityEstimates
         );
     }
 
