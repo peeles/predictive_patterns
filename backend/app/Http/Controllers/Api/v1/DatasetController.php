@@ -11,6 +11,7 @@ use App\Http\Resources\DatasetCollection;
 use App\Http\Resources\DatasetResource;
 use App\Models\DatasetRecordIngestionRun;
 use App\Models\Dataset;
+use App\Repositories\DatasetRepositoryInterface;
 use App\Services\DatasetAnalysisService;
 use App\Support\InteractsWithPagination;
 use Illuminate\Database\Eloquent\Builder;
@@ -25,6 +26,7 @@ class DatasetController extends BaseController
     public function __construct(
         private readonly DatasetIngestionAction $ingestionAction,
         private readonly DatasetAnalysisService $analysisService,
+        private readonly DatasetRepositoryInterface $datasets,
     ) {
         $this->middleware(['auth.api', 'throttle:api']);
     }
@@ -57,7 +59,7 @@ class DatasetController extends BaseController
             'desc'
         );
 
-        $query = Dataset::query();
+        $query = $this->datasets->query();
 
         if (DatasetResource::featuresTableExists()) {
             $query->withCount('features');

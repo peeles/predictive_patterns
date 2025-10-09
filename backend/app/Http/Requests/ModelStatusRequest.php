@@ -3,6 +3,8 @@
 namespace App\Http\Requests;
 
 use App\Models\PredictiveModel;
+use App\Repositories\PredictiveModelRepositoryInterface;
+use function app;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Http\Exceptions\HttpResponseException;
 
@@ -22,7 +24,7 @@ class ModelStatusRequest extends FormRequest
     {
         $modelId = (string) $this->route('id');
 
-        $model = PredictiveModel::query()->find($modelId);
+        $model = app(PredictiveModelRepositoryInterface::class)->find($modelId);
 
         if ($model === null) {
             throw new HttpResponseException(

@@ -3,6 +3,10 @@
 namespace App\Providers;
 
 use App\Enums\Role;
+use App\Repositories\DatasetRepositoryInterface;
+use App\Repositories\PredictiveModelRepositoryInterface;
+use App\Repositories\Eloquent\EloquentDatasetRepository;
+use App\Repositories\Eloquent\EloquentPredictiveModelRepository;
 use App\Support\ResolvesRoles;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
@@ -25,6 +29,9 @@ class AppServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->ensureEncryptionKey();
+
+        $this->app->bind(DatasetRepositoryInterface::class, EloquentDatasetRepository::class);
+        $this->app->bind(PredictiveModelRepositoryInterface::class, EloquentPredictiveModelRepository::class);
     }
 
     /**

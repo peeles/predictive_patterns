@@ -4,13 +4,18 @@ namespace App\Services;
 
 use App\Enums\ModelStatus;
 use App\Models\PredictiveModel;
+use App\Repositories\PredictiveModelRepositoryInterface;
 use Illuminate\Support\Facades\DB;
 
 class ModelRegistry
 {
+    public function __construct(private readonly PredictiveModelRepositoryInterface $models)
+    {
+    }
+
     public function findActive(string $tag, ?string $area = null): ?PredictiveModel
     {
-        return PredictiveModel::query()
+        return $this->models->query()
             ->where('tag', $tag)
             ->when($area !== null, fn ($query) => $query->where('area', $area))
             ->where('status', ModelStatus::Active->value)
@@ -22,7 +27,7 @@ class ModelRegistry
     public function activate(PredictiveModel $model): void
     {
         DB::transaction(function () use ($model): void {
-            PredictiveModel::query()
+            $this->models->query()
                 ->where('tag', $model->tag)
                 ->when($model->area !== null, fn ($query) => $query->where('area', $model->area))
                 ->where('id', '!=', $model->getKey())
