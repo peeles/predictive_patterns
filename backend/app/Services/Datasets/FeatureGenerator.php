@@ -24,8 +24,15 @@ class FeatureGenerator
      * Populate features for the dataset based on the provided schema mapping.
      *
      * @param array<string, string> $schema
+     * @param callable|null $progressCallback Invoked with the total processed row count and
+     *                                        the expected total row count (if known).
      */
-    public function populateFromMapping(Dataset $dataset, array $schema): void
+    public function populateFromMapping(
+        Dataset $dataset,
+        array $schema,
+        ?callable $progressCallback = null,
+        ?int $expectedRowCount = null,
+    ): void
     {
         foreach (['timestamp', 'latitude', 'longitude', 'category'] as $requiredField) {
             if (! array_key_exists($requiredField, $schema)) {
@@ -48,7 +55,7 @@ class FeatureGenerator
             $this->csvParser
                 ->readDatasetRows($path, $dataset->mime_type)
                 ->chunk($batchSize)
-                ->each(function (LazyCollection $chunk) use ($dataset, $schema, &$index) {
+                ->each(function (LazyCollection $chunk) use ($dataset, $schema, &$index, $progressCallback, $expectedRowCount) {
                     $batch = [];
                     $timestamp = now()->toDateTimeString();
 
@@ -70,12 +77,20 @@ class FeatureGenerator
                     if ($batch !== []) {
                         $this->insertFeatureBatch($batch);
                     }
+
+                    if ($progressCallback !== null) {
+                        $progressCallback($index, $expectedRowCount);
+                    }
                 });
         } catch (Throwable $exception) {
             Log::warning('Failed to derive dataset features', [
                 'dataset_id' => $dataset->getKey(),
                 'error' => $exception->getMessage(),
             ]);
+        } finally {
+            if ($progressCallback !== null) {
+                $progressCallback($index, $expectedRowCount);
+            }
         }
     }
 
