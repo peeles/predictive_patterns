@@ -6,6 +6,8 @@ use App\Models\Dataset;
 use App\Support\DatasetRowBuffer;
 use App\Support\DatasetRowPreprocessor;
 use App\Support\Phpml\ImputerFactory;
+use Illuminate\Cache\TaggableStore;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Storage;
 use Phpml\Exception\InvalidOperationException;
 use Phpml\Preprocessing\Imputer;
@@ -14,12 +16,47 @@ use RuntimeException;
 
 class DatasetAnalysisService
 {
+    private const CACHE_PREFIX = 'dataset_analysis:';
+    private const CACHE_TTL_MINUTES = 10;
+
     public function analyze(Dataset $dataset): array
     {
+        if ($dataset->getKey() === null) {
+            throw new RuntimeException('Dataset must be persisted before analysis.');
+        }
+
         if ($dataset->file_path === null) {
             throw new RuntimeException('Dataset does not have an associated file.');
         }
 
+        $cacheKey = $this->cacheKey($dataset);
+        $ttl = now()->addMinutes(self::CACHE_TTL_MINUTES);
+
+        if ($this->cacheSupportsTagging()) {
+            $cacheTags = $this->cacheTags($dataset);
+
+            return Cache::tags($cacheTags)->remember($cacheKey, $ttl, function () use ($dataset): array {
+                return $this->performAnalysis($dataset);
+            });
+        }
+
+        return Cache::remember($cacheKey, $ttl, function () use ($dataset): array {
+            return $this->performAnalysis($dataset);
+        });
+    }
+
+    /**
+     * @return array{
+     *     rows: int,
+     *     feature_names: list<string>,
+     *     feature_summary: array<string, array<string, float>>,
+     *     label_distribution: array<string, int>,
+     *     categories: mixed,
+     *     normalized_preview: list<array<string, mixed>>,
+     * }
+     */
+    private function performAnalysis(Dataset $dataset): array
+    {
         $disk = Storage::disk('local');
 
         if (! $disk->exists($dataset->file_path)) {
@@ -44,6 +81,29 @@ class DatasetAnalysisService
             'categories' => $prepared['categories'],
             'normalized_preview' => $this->normalizedPreview($stats['sample'], $prepared['feature_names']),
         ];
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function cacheTags(Dataset $dataset): array
+    {
+        return [sprintf('dataset:%s', $dataset->getKey())];
+    }
+
+    public static function cacheKeyFor(Dataset $dataset): string
+    {
+        return self::CACHE_PREFIX . $dataset->getKey();
+    }
+
+    private function cacheKey(Dataset $dataset): string
+    {
+        return self::cacheKeyFor($dataset);
+    }
+
+    private function cacheSupportsTagging(): bool
+    {
+        return Cache::getStore() instanceof TaggableStore;
     }
 
     /**

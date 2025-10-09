@@ -3,6 +3,8 @@
 namespace App\Providers;
 
 use App\Enums\Role;
+use App\Models\Dataset;
+use App\Observers\DatasetObserver;
 use App\Repositories\DatasetRepositoryInterface;
 use App\Repositories\PredictiveModelRepositoryInterface;
 use App\Repositories\Eloquent\EloquentDatasetRepository;
@@ -41,6 +43,7 @@ class AppServiceProvider extends ServiceProvider
     {
         $this->useEphemeralCacheDuringDatabaseCommands();
         $this->configureRateLimiting();
+        Dataset::observe(DatasetObserver::class);
     }
 
     /**
