@@ -3,7 +3,6 @@
 namespace App\Jobs;
 
 use App\Models\Dataset;
-use App\Models\PredictiveModel;
 use App\Repositories\DatasetRepositoryInterface;
 use App\Repositories\PredictiveModelRepositoryInterface;
 use App\Services\ModelEvaluationService;
@@ -46,8 +45,7 @@ class EvaluateModelJob implements ShouldQueue
         ModelEvaluationService $evaluationService,
         ?PredictiveModelRepositoryInterface $models = null,
         ?DatasetRepositoryInterface $datasets = null,
-    ): void
-    {
+    ): void {
         $models ??= app(PredictiveModelRepositoryInterface::class);
         $datasets ??= app(DatasetRepositoryInterface::class);
 

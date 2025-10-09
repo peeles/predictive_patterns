@@ -7,9 +7,7 @@ use App\Http\Requests\PredictionStoreRequest;
 use App\Http\Requests\PredictionIndexRequest;
 use App\Http\Resources\PredictionCollection;
 use App\Http\Resources\PredictionDetailResource;
-use App\Models\Dataset;
 use App\Models\Prediction;
-use App\Models\PredictiveModel;
 use App\Repositories\DatasetRepositoryInterface;
 use App\Repositories\PredictiveModelRepositoryInterface;
 use App\Services\PredictionService;
@@ -97,8 +95,7 @@ class PredictionController extends BaseController
         PredictionService $service,
         PredictiveModelRepositoryInterface $models,
         DatasetRepositoryInterface $datasets,
-    ): JsonResponse
-    {
+    ): JsonResponse {
         $this->authorize('create', Prediction::class);
 
         $validated = $request->validated();

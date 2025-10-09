@@ -4,9 +4,10 @@ namespace App\Http\Requests;
 
 use App\Models\PredictiveModel;
 use App\Repositories\PredictiveModelRepositoryInterface;
-use function app;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Http\Exceptions\HttpResponseException;
+
+use function app;
 
 class ModelStatusRequest extends FormRequest
 {
