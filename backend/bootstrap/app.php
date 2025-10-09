@@ -15,6 +15,7 @@ use Illuminate\Routing\Middleware\ThrottleRequests;
 return Application::configure(basePath: dirname(__DIR__))
     ->withProviders((function (): array {
         $providers = [
+            App\Providers\EventServiceProvider::class,
             App\Providers\AppServiceProvider::class,
             App\Providers\AuthServiceProvider::class,
             App\Providers\HorizonServiceProvider::class,

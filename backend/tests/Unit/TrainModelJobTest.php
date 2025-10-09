@@ -2,6 +2,7 @@
 
 namespace Tests\Unit;
 
+use App\Domain\Models\Events\ModelTrained;
 use App\Enums\ModelStatus;
 use App\Enums\TrainingStatus;
 use App\Jobs\TrainModelJob;
@@ -85,6 +86,10 @@ class TrainModelJobTest extends TestCase
         $this->assertSame(200, $model->hyperparameters['log_interval']);
         $this->assertSame('logistic_regression', $model->hyperparameters['model_type']);
         $this->assertSame($model->hyperparameters, $run->hyperparameters);
+
+        Event::assertDispatched(ModelTrained::class, function (ModelTrained $event) use ($model): bool {
+            return $event->model->is($model);
+        });
     }
 
     public function test_handle_trains_svc_without_type_errors(): void

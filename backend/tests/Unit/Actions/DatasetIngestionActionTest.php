@@ -3,7 +3,7 @@
 namespace Tests\Unit\Actions;
 
 use App\Actions\DatasetIngestionAction;
-use App\Events\DatasetStatusUpdated;
+use App\Events\Datasets\DatasetIngestionStarted;
 use App\Http\Requests\DatasetIngestRequest;
 use App\Models\User;
 use App\Services\DatasetProcessingService;
@@ -76,6 +76,8 @@ class DatasetIngestionActionTest extends TestCase
         $this->assertSame($expectedMetadata, $dataset->metadata);
 
         Storage::disk('local')->assertExists($dataset->file_path);
-        Event::assertDispatched(DatasetStatusUpdated::class);
+        Event::assertDispatched(DatasetIngestionStarted::class, function (DatasetIngestionStarted $event) use ($dataset) {
+            return $event->dataset->is($dataset);
+        });
     }
 }

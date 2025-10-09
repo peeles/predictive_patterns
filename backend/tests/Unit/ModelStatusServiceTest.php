@@ -2,8 +2,8 @@
 
 namespace Tests\Unit;
 
+use App\Domain\Models\Events\ModelStatusChanged;
 use App\Enums\ModelStatus;
-use App\Events\ModelStatusUpdated;
 use App\Models\PredictiveModel;
 use App\Services\ModelStatusService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -21,7 +21,7 @@ class ModelStatusServiceTest extends TestCase
             'status' => ModelStatus::Draft,
         ]);
 
-        Event::fake();
+        Event::fake([ModelStatusChanged::class]);
         Redis::shouldReceive('setex')->once()->andReturnTrue();
         Redis::shouldReceive('publish')->once()->andReturnTrue();
 
@@ -32,7 +32,7 @@ class ModelStatusServiceTest extends TestCase
         $this->assertSame(42.5, $snapshot['progress']);
         $this->assertNotEmpty($snapshot['updated_at']);
 
-        Event::assertDispatched(ModelStatusUpdated::class, function (ModelStatusUpdated $event) use ($model): bool {
+        Event::assertDispatched(ModelStatusChanged::class, function (ModelStatusChanged $event) use ($model): bool {
             return $event->modelId === $model->id && $event->state === 'training' && $event->progress === 42.5;
         });
     }
