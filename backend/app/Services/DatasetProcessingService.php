@@ -41,6 +41,8 @@ class DatasetProcessingService
         $this->broadcastProgress($dataset, 0.1);
 
         $preview = $this->generatePreview($dataset);
+        $connection = (string) config('queue.default');
+        $driver = config(sprintf('queue.connections.%s.driver', $connection));
 
         $this->broadcastProgress($dataset, 0.25);
 
@@ -130,12 +132,14 @@ class DatasetProcessingService
 
         $this->datasetRepository->refreshFeatureCount($dataset);
 
-        $event = DatasetStatusUpdated::fromDataset($dataset, 1.0);
-        BroadcastDispatcher::dispatch($event, [
-            'dataset_id' => $event->datasetId,
-            'status' => $event->status->value,
-            'progress' => $event->progress,
-        ]);
+        if ($driver !== 'sync') {
+            $event = DatasetStatusUpdated::fromDataset($dataset, 1.0);
+            BroadcastDispatcher::dispatch($event, [
+                'dataset_id' => $event->datasetId,
+                'status' => $event->status->value,
+                'progress' => $event->progress,
+            ]);
+        }
 
         return $dataset;
     }

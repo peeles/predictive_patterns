@@ -79,6 +79,9 @@ services:
     image: sockudo/sockudo:latest
     container_name: sockudo
     restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
     ports:
       - "6001:6001"
       - "9601:9601"
@@ -121,12 +124,15 @@ services:
       PUSHER_HOST: sockudo
       PUSHER_PORT: 6001
       PUSHER_SCHEME: http
+      RUN_MIGRATIONS: "false"
     depends_on:
       mysql:
         condition: service_healthy
       redis:
         condition: service_healthy
       sockudo:
+        condition: service_started
+      backend:
         condition: service_started
     networks:
       - laravel_network
