@@ -159,7 +159,7 @@ class DatasetProcessingService
         $connection = (string) config('queue.default');
         $driver = config(sprintf('queue.connections.%s.driver', $connection));
 
-        if ($driver === 'null') {
+        if (in_array($driver, ['null', 'sync'], true)) {
             $dataset->refresh();
 
             return $this->finalise($dataset, $schemaMapping, $additionalMetadata);
