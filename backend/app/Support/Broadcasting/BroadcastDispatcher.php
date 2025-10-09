@@ -8,6 +8,7 @@ use Illuminate\Broadcasting\BroadcastException;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Log;
+use Throwable;
 
 class BroadcastDispatcher
 {
@@ -20,14 +21,16 @@ class BroadcastDispatcher
     public static function dispatch(object $event, array $context = []): void
     {
         $driver = config('broadcasting.default', 'pusher');
-        $fallbackEnabled = (bool) config('broadcasting.fallback.pusher.enabled', false);
-        $fallbackRequested = (bool) config('broadcasting.fallback.pusher.requested', false);
-        $fallbackAvailable = (bool) config('broadcasting.fallback.pusher.available', false);
-        $fallbackMissing = (array) config('broadcasting.fallback.pusher.missing', []);
-        $fallbackConnection = (string) config('broadcasting.fallback.pusher.connection', 'pusher');
+        $fallbackEnabled = (bool)config('broadcasting.fallback.pusher.enabled', false);
+        $fallbackRequested = (bool)config('broadcasting.fallback.pusher.requested', false);
+        $fallbackAvailable = (bool)config('broadcasting.fallback.pusher.available', false);
+        $fallbackMissing = (array)config('broadcasting.fallback.pusher.missing', []);
+        $fallbackConnection = (string)config('broadcasting.fallback.pusher.connection', 'pusher');
 
         try {
             Event::dispatch($event);
+
+            return;
         } catch (BroadcastException $exception) {
             Log::error('Broadcast transport failed.', array_merge([
                 'event' => $event::class,
@@ -39,8 +42,8 @@ class BroadcastDispatcher
                 'pusher_fallback_missing' => $fallbackMissing,
             ], $context));
 
-            if (! $fallbackEnabled || $driver === $fallbackConnection) {
-                if ($fallbackRequested && ! $fallbackAvailable) {
+            if (!$fallbackEnabled || $driver === $fallbackConnection) {
+                if ($fallbackRequested && !$fallbackAvailable) {
                     Log::notice('Broadcast fallback skipped because credentials are missing.', array_merge([
                         'event' => $event::class,
                         'missing_credentials' => $fallbackMissing,
@@ -71,6 +74,16 @@ class BroadcastDispatcher
             } finally {
                 Config::set('broadcasting.default', $driver);
             }
+        } catch (Throwable $exception) {
+            Log::error('Broadcast dispatcher encountered an unexpected exception.', array_merge([
+                'event' => $event::class,
+                'exception' => $exception,
+                'driver' => $driver,
+                'pusher_fallback_enabled' => $fallbackEnabled,
+                'pusher_fallback_requested' => $fallbackRequested,
+                'pusher_fallback_available' => $fallbackAvailable,
+                'pusher_fallback_missing' => $fallbackMissing,
+            ], $context));
         }
     }
 }
