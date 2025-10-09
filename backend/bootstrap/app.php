@@ -18,6 +18,7 @@ return Application::configure(basePath: dirname(__DIR__))
             App\Providers\EventServiceProvider::class,
             App\Providers\AppServiceProvider::class,
             App\Providers\AuthServiceProvider::class,
+            App\Providers\BroadcastFallbackServiceProvider::class,
             App\Providers\HorizonServiceProvider::class,
         ];
 

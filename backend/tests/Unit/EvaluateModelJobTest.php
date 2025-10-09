@@ -13,6 +13,7 @@ use App\Services\ModelStatusService;
 use App\Services\ModelTrainingService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Redis;
 use Illuminate\Support\Facades\Storage;
 use RuntimeException;
@@ -21,6 +22,19 @@ use Tests\TestCase;
 class EvaluateModelJobTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_job_dispatches_on_training_queue(): void
+    {
+        Queue::fake();
+
+        config(['queue.connections.training.queue' => 'training']);
+
+        EvaluateModelJob::dispatch('model-id');
+
+        Queue::assertPushed(EvaluateModelJob::class, function (EvaluateModelJob $job): bool {
+            return $job->connection === 'training' && $job->queue === 'training';
+        });
+    }
 
     public function test_handle_persists_evaluation_metrics(): void
     {

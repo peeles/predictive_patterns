@@ -34,6 +34,8 @@ class EvaluateModelJob implements ShouldQueue
         private readonly ?array $metrics = null,
         private readonly ?string $notes = null,
     ) {
+        $this->onConnection('training');
+        $this->onQueue(config('queue.connections.training.queue', 'training'));
     }
 
     /**

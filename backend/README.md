@@ -49,6 +49,18 @@ Run the automated test suite:
 php artisan test
 ```
 
+### Developing without WebSockets
+
+The broadcasting layer degrades gracefully when the Sockudo (Pusher protocol) server is unavailable. To run the API without a WebSocket broker in development, export the following overrides before starting `php artisan serve`:
+
+```bash
+export BROADCAST_DRIVER=log
+export BROADCAST_FALLBACK_ENABLED=true
+export BROADCAST_FALLBACK_CONNECTION=log
+```
+
+Events will be written to the application log instead of attempting a WebSocket transport. Check `storage/logs/laravel.log` for the structured fallback entries emitted by `App\Support\Broadcasting\BroadcastDispatcher`.
+
 ### Quality tooling
 
 Common quality gates can be executed locally via Composer scripts:
@@ -145,6 +157,10 @@ curl http://localhost:9601/metrics
 ```
 
 Both endpoints should return a `200` response when Sockudo is healthy.
+
+## Runbooks
+
+- [Queue and Horizon operations](docs/runbooks/queues.md) – configuring supervisors, diagnosing stuck jobs, and understanding the training queue segregation.
 
 ## Model training queue
 

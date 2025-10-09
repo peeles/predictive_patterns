@@ -84,7 +84,8 @@ return [
     */
 
     'waits' => [
-        'redis:default' => 60,
+        'redis:default' => (int) env('HORIZON_DEFAULT_WAIT', 60),
+        sprintf('redis:%s', env('TRAINING_QUEUE', 'training')) => (int) env('HORIZON_TRAINING_WAIT', 300),
     ],
 
     /*
@@ -184,34 +185,66 @@ return [
     */
 
     'defaults' => [
-        'supervisor-1' => [
-            'connection' => 'redis',
-            'queue' => ['default'],
-            'balance' => 'auto',
-            'autoScalingStrategy' => 'time',
-            'maxProcesses' => 1,
+        'api' => [
+            'connection' => env('HORIZON_API_CONNECTION', env('QUEUE_CONNECTION', 'redis')),
+            'queue' => [env('HORIZON_API_QUEUE', 'default')],
+            'balance' => env('HORIZON_API_BALANCE', 'auto'),
+            'autoScalingStrategy' => env('HORIZON_API_AUTO_SCALING', 'time'),
+            'maxProcesses' => (int) env('HORIZON_API_MAX_PROCESSES', 3),
             'maxTime' => 0,
             'maxJobs' => 0,
-            'memory' => 128,
-            'tries' => 1,
-            'timeout' => 60,
-            'nice' => 0,
+            'memory' => (int) env('HORIZON_API_MEMORY', 128),
+            'tries' => (int) env('HORIZON_API_TRIES', 1),
+            'timeout' => (int) env('HORIZON_API_TIMEOUT', 90),
+            'nice' => (int) env('HORIZON_API_NICE', 0),
+        ],
+        'training' => [
+            'connection' => env('HORIZON_TRAINING_CONNECTION', env('QUEUE_CONNECTION', 'redis')),
+            'queue' => [env('TRAINING_QUEUE', 'training')],
+            'balance' => env('HORIZON_TRAINING_BALANCE', 'simple'),
+            'autoScalingStrategy' => env('HORIZON_TRAINING_AUTO_SCALING', 'time'),
+            'maxProcesses' => (int) env('HORIZON_TRAINING_MAX_PROCESSES', 1),
+            'maxTime' => 0,
+            'maxJobs' => (int) env('HORIZON_TRAINING_MAX_JOBS', 1),
+            'memory' => (int) env('HORIZON_TRAINING_MEMORY', 512),
+            'tries' => (int) env('HORIZON_TRAINING_TRIES', 1),
+            'timeout' => (int) env('HORIZON_TRAINING_TIMEOUT', 3600),
+            'nice' => (int) env('HORIZON_TRAINING_NICE', 0),
         ],
     ],
 
     'environments' => [
         'production' => [
-            'supervisor-1' => [
-                'maxProcesses' => 10,
-                'balanceMaxShift' => 1,
-                'balanceCooldown' => 3,
+            'api' => [
+                'connection' => env('HORIZON_API_CONNECTION', env('QUEUE_CONNECTION', 'redis')),
+                'queue' => [env('HORIZON_API_QUEUE', 'default')],
+                'balance' => env('HORIZON_API_BALANCE', 'auto'),
+                'minProcesses' => (int) env('HORIZON_API_MIN_PROCESSES', 2),
+                'maxProcesses' => (int) env('HORIZON_API_MAX_PROCESSES', 10),
+                'balanceMaxShift' => (int) env('HORIZON_API_BALANCE_MAX_SHIFT', 1),
+                'balanceCooldown' => (int) env('HORIZON_API_BALANCE_COOLDOWN', 3),
+            ],
+            'training' => [
+                'connection' => env('HORIZON_TRAINING_CONNECTION', env('QUEUE_CONNECTION', 'redis')),
+                'queue' => [env('TRAINING_QUEUE', 'training')],
+                'balance' => env('HORIZON_TRAINING_BALANCE', 'simple'),
+                'minProcesses' => 1,
+                'maxProcesses' => (int) env('HORIZON_TRAINING_MAX_PROCESSES', 2),
             ],
         ],
 
         'local' => [
-            'supervisor-1' => [
-                'maxProcesses' => 3,
+            'api' => [
+                'connection' => env('HORIZON_API_CONNECTION', env('QUEUE_CONNECTION', 'redis')),
+                'queue' => [env('HORIZON_API_QUEUE', 'default')],
+                'maxProcesses' => (int) env('HORIZON_LOCAL_API_MAX_PROCESSES', 2),
+            ],
+            'training' => [
+                'connection' => env('HORIZON_TRAINING_CONNECTION', env('QUEUE_CONNECTION', 'redis')),
+                'queue' => [env('TRAINING_QUEUE', 'training')],
+                'maxProcesses' => (int) env('HORIZON_LOCAL_TRAINING_MAX_PROCESSES', 1),
             ],
         ],
     ],
+
 ];

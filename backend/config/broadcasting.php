@@ -65,4 +65,11 @@ return [
 
     ],
 
+    'fallback' => [
+        'pusher' => [
+            'enabled' => (bool) env('BROADCAST_FALLBACK_ENABLED', true),
+            'connection' => env('BROADCAST_FALLBACK_CONNECTION', 'log'),
+        ],
+    ],
+
 ];
