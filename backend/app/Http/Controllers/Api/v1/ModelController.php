@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\v1;
 use App\Http\Requests\CreateModelRequest;
 use App\Http\Requests\EvaluateModelRequest;
 use App\Http\Requests\ModelIndexRequest;
+use App\Http\Requests\ModelStatusRequest;
 use App\Http\Requests\RollbackModelRequest;
 use App\Http\Requests\TrainModelRequest;
 use App\Enums\TrainingStatus;
@@ -457,15 +458,14 @@ class ModelController extends BaseController
     /**
      * Check the status of model training or evaluation.
      *
-     * @param string $id
      * @param ModelStatusService $statusService
      *
      * @return JsonResponse
      * @throws AuthorizationException
      */
-    public function status(string $id, ModelStatusService $statusService): JsonResponse
+    public function status(ModelStatusRequest $request, ModelStatusService $statusService): JsonResponse
     {
-        $model = PredictiveModel::query()->findOrFail($id);
+        $model = $request->model();
 
         $this->authorize('view', $model);
 

@@ -2,13 +2,15 @@
 
 namespace App\Http\Controllers\Api\v1;
 
+use App\Http\Requests\AuthLogoutRequest;
+use App\Http\Requests\AuthMeRequest;
+use App\Http\Requests\AuthRefreshRequest;
 use App\Http\Requests\LoginRequest;
 use App\Http\Resources\UserResource;
 use App\Models\User;
 use App\Support\SanctumTokenManager;
 use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
@@ -52,15 +54,15 @@ class AuthController extends BaseController
     /**
      * Refresh access token
      *
-     * @param Request $request
+     * @param AuthRefreshRequest $request
      *
      * @return JsonResponse
      */
-    public function refresh(Request $request): JsonResponse
+    public function refresh(AuthRefreshRequest $request): JsonResponse
     {
-        $refreshToken = $request->cookie(SanctumTokenManager::REFRESH_COOKIE_NAME);
+        $refreshToken = $request->refreshToken();
 
-        if (! is_string($refreshToken) || $refreshToken === '') {
+        if ($refreshToken === null) {
             return $this->unauthorizedRefreshResponse();
         }
 
@@ -83,11 +85,11 @@ class AuthController extends BaseController
     /**
      * User logout
      *
-     * @param Request $request
+     * @param AuthLogoutRequest $request
      *
      * @return JsonResponse
      */
-    public function logout(Request $request): JsonResponse
+    public function logout(AuthLogoutRequest $request): JsonResponse
     {
         SanctumTokenManager::revoke($request->bearerToken());
 
@@ -101,11 +103,11 @@ class AuthController extends BaseController
     /**
      * Get the authenticated user.
      *
-     * @param Request $request
+     * @param AuthMeRequest $request
      *
      * @return JsonResponse
      */
-    public function me(Request $request): JsonResponse
+    public function me(AuthMeRequest $request): JsonResponse
     {
         $user = $request->user();
 
