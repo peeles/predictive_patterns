@@ -14,6 +14,10 @@ class ModelStatusUpdated implements ShouldBroadcast
     use InteractsWithSockets;
     use SerializesModels;
 
+    public string $connection = 'broadcasts';
+    public string $queue = 'broadcasts';
+    public int $tries = 3;
+
     public readonly ?string $message;
 
     public function __construct(

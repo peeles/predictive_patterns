@@ -7,14 +7,27 @@ use App\Domain\Models\Events\ModelTrained;
 use App\Enums\ModelStatus;
 use App\Events\ModelStatusUpdated;
 use App\Models\PredictiveModel;
-use App\Support\Broadcasting\BroadcastDispatcher;
 use Carbon\CarbonInterface;
-use Illuminate\Support\Testing\Fakes\EventFake;
+use Illuminate\Support\Facades\Cache;
 
 class BroadcastModelStatusUpdate
 {
     public function handle(ModelStatusChanged|ModelTrained $event): void
     {
+        // Throttle progress updates to prevent spamming
+        if ($event instanceof ModelStatusChanged) {
+            $modelId = $event->modelId;
+            $cacheKey = "broadcast.throttle.model.{$modelId}";
+
+            if (Cache::has($cacheKey)) {
+                // Skip this broadcast, too soon since last one
+                return;
+            }
+
+            // Throttle for 1 second
+            Cache::put($cacheKey, true, 1);
+        }
+
         if ($event instanceof ModelStatusChanged) {
             $modelId = $event->modelId;
             $state = $event->state;
@@ -38,16 +51,8 @@ class BroadcastModelStatusUpdate
             $message,
         );
 
-        if (app('events') instanceof EventFake) {
-            event($broadcastEvent);
-
-            return;
-        }
-
-        BroadcastDispatcher::dispatch($broadcastEvent, [
-            'model_id' => $modelId,
-            'state' => $state,
-        ]);
+        // Use built-in broadcast helper instead of custom dispatcher
+        broadcast($broadcastEvent);
     }
 
     private function normalizeProgress(?float $progress): ?float

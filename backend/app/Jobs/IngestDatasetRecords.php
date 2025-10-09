@@ -5,6 +5,7 @@ namespace App\Jobs;
 use Illuminate\Bus\Batchable;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
@@ -12,7 +13,7 @@ use App\Services\DatasetRecordIngestionService;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
-class IngestDatasetRecords implements ShouldQueue
+class IngestDatasetRecords implements ShouldQueue, ShouldBeUnique
 {
     use Batchable;
     use Dispatchable;
@@ -20,8 +21,21 @@ class IngestDatasetRecords implements ShouldQueue
     use Queueable;
     use SerializesModels;
 
-    public function __construct(public string $yearMonth, public bool $dryRun = false)
+    public int $tries = 3;
+    public int $timeout = 600;
+    public int $uniqueFor = 3600;
+
+    public array $backoff = [60, 300, 900]; // 1min, 5min, 15min
+
+    public function __construct(
+        public string $yearMonth,
+        public bool $dryRun = false
+    ) {
+    }
+
+    public function uniqueId(): string
     {
+        return "ingest-dataset-{$this->yearMonth}";
     }
 
     /**
@@ -40,6 +54,7 @@ class IngestDatasetRecords implements ShouldQueue
             'month' => $this->yearMonth,
             'dry_run' => $this->dryRun,
             'error' => $exception->getMessage(),
+            'trace' => $exception->getTraceAsString(),
         ]);
     }
 }

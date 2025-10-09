@@ -171,7 +171,7 @@ return [
     |
     */
 
-    'memory_limit' => 64,
+    'memory_limit' => 256,
 
     /*
     |--------------------------------------------------------------------------
@@ -215,15 +215,30 @@ return [
             'connection' => env('HORIZON_TRAINING_CONNECTION', 'training'),
             'queue' => [env('TRAINING_QUEUE', 'training')],
             'balance' => 'simple',
-            'autoScalingStrategy' => 'time',
+            'autoScalingStrategy' => 'size', // Changed from 'time'
             'minProcesses' => 1,
             'maxProcesses' => 2,
+            'balanceMaxShift' => 1,
+            'balanceCooldown' => 3,
             'maxTime' => 0,
-            'maxJobs' => 0,
-            'memory' => 512,
+            'maxJobs' => 1, // Added: restart after each job
+            'memory' => 1024, // Increased from 512
             'tries' => 1,
             'timeout' => (int) env('TRAINING_QUEUE_TIMEOUT', 3600),
-            'nice' => 0,
+            'nice' => 10, // Added: lower priority
+        ],
+        'supervisor-broadcasts' => [
+            'connection' => 'broadcasts',
+            'queue' => ['broadcasts'],
+            'balance' => 'auto',
+            'autoScalingStrategy' => 'time',
+            'maxProcesses' => 3,
+            'maxTime' => 0,
+            'maxJobs' => 0,
+            'memory' => 128,
+            'tries' => 3,
+            'timeout' => 30,
+            'nice' => 5,
         ],
     ],
 

@@ -11,16 +11,8 @@ use Tests\TestCase;
 
 class BroadcastDispatcherTest extends TestCase
 {
-    public function test_it_logs_transport_failure_when_fallback_disabled(): void
+    public function test_it_logs_broadcast_exception_details(): void
     {
-        $this->setFallbackConfig([
-            'enabled' => false,
-            'connection' => 'log',
-            'requested' => false,
-            'available' => true,
-            'missing' => [],
-        ]);
-
         config(['broadcasting.default' => 'pusher']);
 
         Event::shouldReceive('dispatch')
@@ -35,101 +27,31 @@ class BroadcastDispatcherTest extends TestCase
         Log::shouldHaveReceived('error')
             ->once()
             ->withArgs(function (string $message, array $context): bool {
-                return $message === 'Broadcast transport failed.'
+                return $message === 'Broadcast failed'
                     && ($context['driver'] ?? null) === 'pusher'
-                    && ($context['event'] ?? null) === FakeBroadcastEvent::class;
-            });
-
-        Log::shouldNotHaveReceived('notice');
-    }
-
-    public function test_it_attempts_fallback_connection_when_available(): void
-    {
-        $this->setFallbackConfig([
-            'enabled' => true,
-            'connection' => 'log',
-            'requested' => true,
-            'available' => true,
-            'missing' => [],
-        ]);
-
-        config(['broadcasting.default' => 'pusher']);
-
-        Event::shouldReceive('dispatch')
-            ->once()
-            ->ordered()
-            ->withArgs(fn ($event): bool => $event instanceof FakeBroadcastEvent)
-            ->andThrow(new BroadcastException('Primary transport failure.'));
-
-        Event::shouldReceive('dispatch')
-            ->once()
-            ->ordered()
-            ->withArgs(fn ($event): bool => $event instanceof FakeBroadcastEvent)
-            ->andReturnNull();
-
-        Log::spy();
-
-        BroadcastDispatcher::dispatch(new FakeBroadcastEvent());
-
-        $this->assertSame('pusher', config('broadcasting.default'));
-
-        Log::shouldHaveReceived('notice')
-            ->once()
-            ->withArgs(function (string $message, array $context): bool {
-                return $message === 'Broadcast fallback dispatched via Pusher.'
                     && ($context['event'] ?? null) === FakeBroadcastEvent::class
-                    && ($context['fallback_driver'] ?? null) === 'log';
+                    && ($context['exception'] ?? null) === 'Transport failure.';
             });
     }
 
-    public function test_it_switches_to_sync_queue_on_connection_failure(): void
+    public function test_it_logs_unexpected_exceptions_without_fallback(): void
     {
-        $this->setFallbackConfig([
-            'enabled' => true,
-            'connection' => 'log',
-            'requested' => true,
-            'available' => true,
-            'missing' => [],
-        ]);
-
-        config([
-            'broadcasting.default' => 'pusher',
-            'queue.default' => 'redis',
-        ]);
-
         Event::shouldReceive('dispatch')
             ->once()
-            ->ordered()
             ->withArgs(fn ($event): bool => $event instanceof FakeBroadcastEvent)
-            ->andThrow(new RuntimeException('Connection refused'));
-
-        Event::shouldReceive('dispatch')
-            ->once()
-            ->ordered()
-            ->withArgs(fn ($event): bool => $event instanceof FakeBroadcastEvent)
-            ->andReturnNull();
+            ->andThrow(new RuntimeException('Unexpected failure.'));
 
         Log::spy();
 
         BroadcastDispatcher::dispatch(new FakeBroadcastEvent());
 
-        $this->assertSame('redis', config('queue.default'));
-
-        Log::shouldHaveReceived('warning')
+        Log::shouldHaveReceived('error')
             ->once()
             ->withArgs(function (string $message, array $context): bool {
-                return $message === 'Broadcast dispatcher falling back to synchronous queue.'
-                    && ($context['driver'] ?? null) === 'pusher'
-                    && ($context['queue_connection'] ?? null) === 'redis';
+                return $message === 'Unexpected broadcast error'
+                    && ($context['event'] ?? null) === FakeBroadcastEvent::class
+                    && ($context['exception'] ?? null) === 'Unexpected failure.';
             });
-    }
-
-    /**
-     * @param array<string, mixed> $overrides
-     */
-    private function setFallbackConfig(array $overrides): void
-    {
-        config(['broadcasting.fallback.pusher' => $overrides]);
     }
 }
 

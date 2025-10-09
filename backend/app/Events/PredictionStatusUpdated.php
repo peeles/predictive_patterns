@@ -16,6 +16,10 @@ class PredictionStatusUpdated implements ShouldBroadcast
     use InteractsWithSockets;
     use SerializesModels;
 
+    public string $connection = 'broadcasts';
+    public string $queue = 'broadcasts';
+    public int $tries = 3;
+
     /**
      * @param float|null $progress Progress as a ratio between 0 and 1.
      */
