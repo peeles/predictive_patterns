@@ -11,7 +11,7 @@ return new class () extends Migration {
         Schema::create('predictions', function (Blueprint $table): void {
             $table->uuid('id')->primary();
             $table->foreignUuid('model_id')->constrained('models')->cascadeOnDelete();
-            $table->foreignUuid('dataset_id')->nullable()->constrained('datasets')->cascadeOnDelete();
+            $table->foreignUuid('dataset_id')->nullable()->constrained('datasets')->nullOnDelete();
             $table->enum('status', array_map(static fn (PredictionStatus $status): string => $status->value, PredictionStatus::cases()))
                 ->default(PredictionStatus::Queued->value);
             $table->json('parameters')->nullable();
