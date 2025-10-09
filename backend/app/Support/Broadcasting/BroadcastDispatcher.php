@@ -8,6 +8,7 @@ use Illuminate\Broadcasting\BroadcastException;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Log;
+use RedisException;
 use Throwable;
 
 class BroadcastDispatcher
@@ -75,6 +76,44 @@ class BroadcastDispatcher
                 Config::set('broadcasting.default', $driver);
             }
         } catch (Throwable $exception) {
+            if (self::isConnectionFailure($exception)) {
+                $queueConnection = (string) config('queue.default', 'sync');
+
+                Log::warning('Broadcast dispatcher falling back to synchronous queue.', array_merge([
+                    'event' => $event::class,
+                    'exception' => $exception,
+                    'driver' => $driver,
+                    'queue_connection' => $queueConnection,
+                ], $context));
+
+                if ($queueConnection !== 'sync') {
+                    Config::set('queue.default', 'sync');
+                }
+
+                try {
+                    Event::dispatch($event);
+
+                    Log::notice('Broadcast dispatcher dispatched event via synchronous queue after connection failure.', array_merge([
+                        'event' => $event::class,
+                        'driver' => $driver,
+                        'queue_connection' => $queueConnection,
+                    ], $context));
+                } catch (Throwable $fallbackException) {
+                    Log::error('Broadcast dispatcher synchronous fallback failed.', array_merge([
+                        'event' => $event::class,
+                        'exception' => $fallbackException,
+                        'driver' => $driver,
+                        'queue_connection' => $queueConnection,
+                    ], $context));
+                } finally {
+                    if ($queueConnection !== 'sync') {
+                        Config::set('queue.default', $queueConnection);
+                    }
+                }
+
+                return;
+            }
+
             Log::error('Broadcast dispatcher encountered an unexpected exception.', array_merge([
                 'event' => $event::class,
                 'exception' => $exception,
@@ -85,5 +124,26 @@ class BroadcastDispatcher
                 'pusher_fallback_missing' => $fallbackMissing,
             ], $context));
         }
+    }
+
+    private static function isConnectionFailure(Throwable $exception): bool
+    {
+        if (class_exists(RedisException::class) && $exception instanceof RedisException) {
+            return true;
+        }
+
+        $message = strtolower($exception->getMessage());
+
+        if ($message !== '' && str_contains($message, 'connection refused')) {
+            return true;
+        }
+
+        $previous = $exception->getPrevious();
+
+        if ($previous instanceof Throwable) {
+            return self::isConnectionFailure($previous);
+        }
+
+        return false;
     }
 }
