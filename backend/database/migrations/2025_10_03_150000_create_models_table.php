@@ -10,13 +10,14 @@ return new class () extends Migration {
     {
         Schema::create('models', function (Blueprint $table): void {
             $table->uuid('id')->primary();
-            $table->uuid('dataset_id')->nullable();
+            $table->foreignUuid('dataset_id')->nullable()->constrained('datasets')->cascadeOnDelete();
             $table->string('name');
             $table->string('version')->default('1.0.0');
             $table->string('tag')->nullable();
             $table->string('area')->nullable();
             $table->enum('status', array_map(static fn (ModelStatus $status): string => $status->value, ModelStatus::cases()))
-                ->default(ModelStatus::Draft->value);
+                ->default(ModelStatus::Draft->value)
+                ->index();
             $table->json('hyperparameters')->nullable();
             $table->json('metadata')->nullable();
             $table->json('metrics')->nullable();
@@ -24,7 +25,6 @@ return new class () extends Migration {
             $table->foreignId('created_by')->nullable()->constrained('users');
             $table->timestampsTz();
 
-            $table->foreign('dataset_id')->references('id')->on('datasets')->nullOnDelete();
             $table->index(['tag', 'area']);
         });
     }
