@@ -3,6 +3,7 @@
 namespace App\Services\Datasets;
 
 use App\Enums\DatasetStatus;
+use App\Events\Datasets\DatasetIngestionFailed;
 use App\Models\Dataset;
 use Illuminate\Support\Facades\Schema;
 
@@ -53,6 +54,7 @@ class DatasetRepository
         $dataset->ingested_at = null;
         $dataset->save();
 
+        event(new DatasetIngestionFailed($dataset, $message));
     }
 
     public function featuresTableExists(): bool

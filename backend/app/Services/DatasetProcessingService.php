@@ -3,7 +3,6 @@
 namespace App\Services;
 
 use App\Events\Datasets\DatasetIngestionCompleted;
-use App\Events\Datasets\DatasetIngestionFailed;
 use App\Events\Datasets\DatasetIngestionProgressed;
 use App\Jobs\CompleteDatasetIngestion;
 use App\Models\Dataset;
@@ -184,8 +183,6 @@ class DatasetProcessingService
         $message = $exception?->getMessage() ?: 'Dataset processing failed.';
 
         $this->datasetRepository->markAsFailed($dataset, $message);
-
-        event(new DatasetIngestionFailed($dataset, $message));
     }
 
     /**
