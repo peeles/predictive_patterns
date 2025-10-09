@@ -2,10 +2,12 @@
 
 namespace App\Jobs;
 
+use App\Jobs\Middleware\LogJobExecution;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Queue\Middleware\RateLimited;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -17,6 +19,17 @@ class QueueHealthCheck implements ShouldQueue
     use InteractsWithQueue;
     use Queueable;
     use SerializesModels;
+
+    /**
+     * @return array<int, object>
+     */
+    public function middleware(): array
+    {
+        return [
+            new LogJobExecution(),
+            new RateLimited('default'),
+        ];
+    }
 
     public function handle(): void
     {

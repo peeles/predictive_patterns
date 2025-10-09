@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Jobs\Middleware\LogJobExecution;
 use App\Models\Dataset;
 use App\Repositories\DatasetRepositoryInterface;
 use App\Repositories\PredictiveModelRepositoryInterface;
@@ -11,6 +12,7 @@ use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Queue\Middleware\RateLimited;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -36,6 +38,17 @@ class EvaluateModelJob implements ShouldQueue
     ) {
         $this->onConnection('training');
         $this->onQueue(config('queue.connections.training.queue', 'training'));
+    }
+
+    /**
+     * @return array<int, object>
+     */
+    public function middleware(): array
+    {
+        return [
+            new LogJobExecution(),
+            new RateLimited('default'),
+        ];
     }
 
     /**

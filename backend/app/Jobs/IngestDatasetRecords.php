@@ -2,14 +2,16 @@
 
 namespace App\Jobs;
 
+use App\Jobs\Middleware\LogJobExecution;
+use App\Services\DatasetRecordIngestionService;
 use Illuminate\Bus\Batchable;
 use Illuminate\Bus\Queueable;
-use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
+use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Queue\Middleware\RateLimited;
 use Illuminate\Queue\SerializesModels;
-use App\Services\DatasetRecordIngestionService;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
@@ -36,6 +38,17 @@ class IngestDatasetRecords implements ShouldQueue, ShouldBeUnique
     public function uniqueId(): string
     {
         return "ingest-dataset-{$this->yearMonth}";
+    }
+
+    /**
+     * @return array<int, object>
+     */
+    public function middleware(): array
+    {
+        return [
+            new LogJobExecution(),
+            new RateLimited('default'),
+        ];
     }
 
     /**

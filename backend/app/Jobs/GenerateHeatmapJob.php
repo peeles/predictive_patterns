@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Enums\PredictionOutputFormat;
 use App\Enums\PredictionStatus;
 use App\Events\PredictionStatusUpdated;
+use App\Jobs\Middleware\LogJobExecution;
 use App\Models\Dataset;
 use App\Models\Prediction;
 use App\Models\PredictiveModel;
@@ -17,6 +18,7 @@ use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Queue\Middleware\RateLimited;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
@@ -44,6 +46,17 @@ class GenerateHeatmapJob implements ShouldQueue
         private readonly array $parameters,
         private readonly bool $generateTiles = false,
     ) {
+    }
+
+    /**
+     * @return array<int, object>
+     */
+    public function middleware(): array
+    {
+        return [
+            new LogJobExecution(),
+            new RateLimited('default'),
+        ];
     }
 
     /**

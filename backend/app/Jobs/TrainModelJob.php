@@ -5,14 +5,16 @@ namespace App\Jobs;
 use App\Domain\Models\Events\ModelTrained;
 use App\Enums\ModelStatus;
 use App\Enums\TrainingStatus;
+use App\Jobs\Middleware\LogJobExecution;
 use App\Models\TrainingRun;
 use App\Services\ModelStatusService;
 use App\Services\ModelTrainingService;
 use Illuminate\Bus\Queueable;
-use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
+use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Queue\Middleware\RateLimited;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 use Random\RandomException;
@@ -39,6 +41,17 @@ class TrainModelJob implements ShouldQueue, ShouldBeUnique
         private readonly string $trainingRunId,
         private readonly ?array $hyperparameters = null
     ) {
+    }
+
+    /**
+     * @return array<int, object>
+     */
+    public function middleware(): array
+    {
+        return [
+            new LogJobExecution(),
+            new RateLimited('default'),
+        ];
     }
 
     public function uniqueId(): string
