@@ -10,8 +10,8 @@ return new class () extends Migration {
     {
         Schema::create('predictions', function (Blueprint $table): void {
             $table->uuid('id')->primary();
-            $table->uuid('model_id');
-            $table->uuid('dataset_id')->nullable();
+            $table->foreignUuid('model_id')->constrained('models')->cascadeOnDelete();
+            $table->foreignUuid('dataset_id')->nullable()->constrained('datasets')->nullOnDelete();
             $table->enum('status', array_map(static fn (PredictionStatus $status): string => $status->value, PredictionStatus::cases()))
                 ->default(PredictionStatus::Queued->value);
             $table->json('parameters')->nullable();
@@ -23,8 +23,6 @@ return new class () extends Migration {
             $table->foreignId('initiated_by')->nullable()->constrained('users');
             $table->timestampsTz();
 
-            $table->foreign('model_id')->references('id')->on('models')->cascadeOnDelete();
-            $table->foreign('dataset_id')->references('id')->on('datasets')->nullOnDelete();
             $table->index(['model_id', 'status']);
         });
     }

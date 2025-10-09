@@ -12,14 +12,15 @@ return new class () extends Migration {
             $table->uuid('id')->primary();
             $table->string('name');
             $table->string('description')->nullable();
-            $table->enum('source_type', ['file', 'url']);
+            $table->enum('source_type', ['file', 'url'])->index();
             $table->string('source_uri')->nullable();
             $table->string('file_path')->nullable();
             $table->string('checksum')->nullable();
             $table->string('mime_type')->nullable();
             $table->json('metadata')->nullable();
             $table->enum('status', array_map(static fn (DatasetStatus $status): string => $status->value, DatasetStatus::cases()))
-                ->default(DatasetStatus::Pending->value);
+                ->default(DatasetStatus::Pending->value)
+                ->index();
             $table->timestampTz('ingested_at')->nullable();
             $table->foreignId('created_by')->nullable()->constrained('users');
             $table->timestampsTz();
