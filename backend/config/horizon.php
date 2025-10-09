@@ -199,7 +199,7 @@ return [
             'nice' => (int) env('HORIZON_API_NICE', 0),
         ],
         'training' => [
-            'connection' => env('HORIZON_TRAINING_CONNECTION', env('QUEUE_CONNECTION', 'redis')),
+            'connection' => env('HORIZON_TRAINING_CONNECTION', 'training'),
             'queue' => [env('TRAINING_QUEUE', 'training')],
             'balance' => env('HORIZON_TRAINING_BALANCE', 'simple'),
             'autoScalingStrategy' => env('HORIZON_TRAINING_AUTO_SCALING', 'time'),
@@ -225,7 +225,7 @@ return [
                 'balanceCooldown' => (int) env('HORIZON_API_BALANCE_COOLDOWN', 3),
             ],
             'training' => [
-                'connection' => env('HORIZON_TRAINING_CONNECTION', env('QUEUE_CONNECTION', 'redis')),
+                'connection' => env('HORIZON_TRAINING_CONNECTION', 'training'),
                 'queue' => [env('TRAINING_QUEUE', 'training')],
                 'balance' => env('HORIZON_TRAINING_BALANCE', 'simple'),
                 'minProcesses' => 1,
@@ -240,7 +240,7 @@ return [
                 'maxProcesses' => (int) env('HORIZON_LOCAL_API_MAX_PROCESSES', 2),
             ],
             'training' => [
-                'connection' => env('HORIZON_TRAINING_CONNECTION', env('QUEUE_CONNECTION', 'redis')),
+                'connection' => env('HORIZON_TRAINING_CONNECTION', 'training'),
                 'queue' => [env('TRAINING_QUEUE', 'training')],
                 'maxProcesses' => (int) env('HORIZON_LOCAL_TRAINING_MAX_PROCESSES', 1),
             ],
