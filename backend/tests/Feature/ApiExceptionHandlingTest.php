@@ -20,13 +20,11 @@ class ApiExceptionHandlingTest extends TestCase
         $response = $this->getJson('/api/test/model-not-found');
 
         $response->assertStatus(Response::HTTP_NOT_FOUND)
-            ->assertJsonStructure([
-                'error' => ['code', 'message', 'details', 'request_id'],
-            ])
-            ->assertJsonPath('error.code', 'not_found');
+            ->assertJsonStructure(['code', 'message', 'errors', 'request_id'])
+            ->assertJsonPath('code', 'not_found');
 
-        $this->assertNotEmpty($response->json('error.request_id'));
-        $this->assertSame($response->json('error.request_id'), $response->headers->get('X-Request-Id'));
+        $this->assertNotEmpty($response->json('request_id'));
+        $this->assertSame($response->json('request_id'), $response->headers->get('X-Request-Id'));
     }
 
     public function test_validation_exception_includes_details_and_request_id(): void
@@ -41,8 +39,7 @@ class ApiExceptionHandlingTest extends TestCase
             ->postJson('/api/test/validation');
 
         $response->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
-            ->assertJsonPath('error.code', 'validation_error')
-            ->assertJsonPath('error.details.errors.name.0', 'The name field is required.')
+            ->assertJsonPath('code', 'validation_error')
             ->assertJsonPath('errors.name.0', 'The name field is required.');
 
         $this->assertSame('feature-test-request-id', $response->headers->get('X-Request-Id'));
@@ -57,10 +54,8 @@ class ApiExceptionHandlingTest extends TestCase
         $response = $this->getJson('/api/test/unhandled');
 
         $response->assertStatus(Response::HTTP_INTERNAL_SERVER_ERROR)
-            ->assertJsonPath('error.code', 'server_error')
-            ->assertJsonPath('error.message', 'Internal server error.')
-            ->assertJsonStructure([
-                'error' => ['code', 'message', 'details', 'request_id'],
-            ]);
+            ->assertJsonPath('code', 'server_error')
+            ->assertJsonPath('message', 'Internal server error.')
+            ->assertJsonStructure(['code', 'message', 'errors', 'request_id']);
     }
 }
