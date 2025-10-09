@@ -3,14 +3,13 @@
 namespace App\Actions;
 
 use App\Enums\DatasetStatus;
-use App\Events\DatasetStatusUpdated;
+use App\Events\Datasets\DatasetIngestionStarted;
 use App\Http\Requests\DatasetIngestRequest;
 use App\Jobs\IngestRemoteDataset;
 use App\Models\Dataset;
 use App\Models\User;
 use App\Services\DatasetProcessingService;
 use App\Services\Datasets\SchemaMapper;
-use App\Support\Broadcasting\BroadcastDispatcher;
 use App\Support\Filesystem\CsvCombiner;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Arr;
@@ -62,12 +61,9 @@ class DatasetIngestionAction
         $dataset->save();
         $dataset->refresh();
 
-        $event = DatasetStatusUpdated::fromDataset($dataset);
-
-        BroadcastDispatcher::dispatch($event, [
-            'dataset_id' => $event->datasetId,
-            'status' => $event->status->value,
-        ]);
+        if ($dataset->status === DatasetStatus::Processing) {
+            event(new DatasetIngestionStarted($dataset, 0.0));
+        }
 
         if ($dataset->source_type === 'url') {
             IngestRemoteDataset::dispatch($dataset->id);

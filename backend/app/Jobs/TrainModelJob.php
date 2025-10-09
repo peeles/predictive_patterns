@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Domain\Models\Events\ModelTrained;
 use App\Enums\ModelStatus;
 use App\Enums\TrainingStatus;
 use App\Models\TrainingRun;
@@ -91,6 +92,9 @@ class TrainModelJob implements ShouldQueue
             ])->save();
 
             $statusService->markIdle($model->id);
+            $model->refresh();
+
+            event(new ModelTrained($model));
         } catch (Throwable $exception) {
             $run->fill([
                 'status' => TrainingStatus::Failed,

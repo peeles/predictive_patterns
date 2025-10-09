@@ -2,13 +2,13 @@
 
 namespace App\Services;
 
-use App\Events\DatasetStatusUpdated;
+use App\Events\Datasets\DatasetIngestionCompleted;
+use App\Events\Datasets\DatasetIngestionProgressed;
 use App\Jobs\CompleteDatasetIngestion;
 use App\Models\Dataset;
 use App\Services\Datasets\DatasetRepository;
 use App\Services\Datasets\FeatureGenerator;
 use App\Services\Datasets\SchemaMapper;
-use App\Support\Broadcasting\BroadcastDispatcher;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Throwable;
@@ -38,13 +38,13 @@ class DatasetProcessingService
             $dataset->metadata = $this->datasetRepository->mergeMetadata($dataset->metadata, $additionalMetadata);
         }
 
-        $this->broadcastProgress($dataset, 0.1);
+        $this->dispatchProgress($dataset, 0.1);
 
         $preview = $this->generatePreview($dataset);
         $connection = (string) config('queue.default');
         $driver = config(sprintf('queue.connections.%s.driver', $connection));
 
-        $this->broadcastProgress($dataset, 0.25);
+        $this->dispatchProgress($dataset, 0.25);
 
         if ($preview !== null) {
             $metadata = array_filter([
@@ -78,11 +78,11 @@ class DatasetProcessingService
 
         $this->datasetRepository->markAsReady($dataset);
 
-        $this->broadcastProgress($dataset, 0.5);
+        $this->dispatchProgress($dataset, 0.5);
 
         if ($schemaMapping !== [] && $dataset->file_path !== null && $this->datasetRepository->featuresTableExists()) {
             $dataset->refresh();
-            $this->broadcastProgress($dataset, 0.6);
+            $this->dispatchProgress($dataset, 0.6);
 
             $expectedRows = $this->extractRowCount($preview);
             $featureProgressStart = 0.6;
@@ -116,7 +116,7 @@ class DatasetProcessingService
 
                     if ($shouldBroadcast) {
                         $lastBroadcast = $progress;
-                        $this->broadcastProgress($dataset, $progress);
+                        $this->dispatchProgress($dataset, $progress);
                     }
                 },
                 $expectedRows
@@ -124,16 +124,17 @@ class DatasetProcessingService
 
             if ($lastBroadcast < $featureProgressEnd) {
                 $lastBroadcast = $featureProgressEnd;
-                $this->broadcastProgress($dataset, $featureProgressEnd);
+                $this->dispatchProgress($dataset, $featureProgressEnd);
             }
         } else {
-            $this->broadcastProgress($dataset, 0.75);
+            $this->dispatchProgress($dataset, 0.75);
         }
 
         $this->datasetRepository->refreshFeatureCount($dataset);
 
         $dataset->refresh();
-        $this->broadcastProgress($dataset, 1.0);
+
+        event(new DatasetIngestionCompleted($dataset));
 
         return $dataset;
     }
@@ -169,7 +170,7 @@ class DatasetProcessingService
             $additionalMetadata
         );
 
-        $this->broadcastProgress($dataset, 0.0);
+        $this->dispatchProgress($dataset, 0.0);
 
         return $dataset;
     }
@@ -232,15 +233,9 @@ class DatasetProcessingService
         return null;
     }
 
-    private function broadcastProgress(Dataset $dataset, ?float $progress, ?string $message = null): void
+    private function dispatchProgress(Dataset $dataset, ?float $progress, ?string $message = null): void
     {
-        $event = DatasetStatusUpdated::fromDataset($dataset, $progress, $message);
-
-        BroadcastDispatcher::dispatch($event, [
-            'dataset_id' => $event->datasetId,
-            'status' => $event->status->value,
-            'progress' => $event->progress,
-        ]);
+        event(new DatasetIngestionProgressed($dataset, $progress, $message));
     }
 
     private function extractRowCount(?array $preview): ?int

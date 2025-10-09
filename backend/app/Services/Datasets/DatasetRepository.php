@@ -3,9 +3,8 @@
 namespace App\Services\Datasets;
 
 use App\Enums\DatasetStatus;
-use App\Events\DatasetStatusUpdated;
+use App\Events\Datasets\DatasetIngestionFailed;
 use App\Models\Dataset;
-use App\Support\Broadcasting\BroadcastDispatcher;
 use Illuminate\Support\Facades\Schema;
 
 class DatasetRepository
@@ -55,12 +54,7 @@ class DatasetRepository
         $dataset->ingested_at = null;
         $dataset->save();
 
-        $event = DatasetStatusUpdated::fromDataset($dataset, 0.0, $message);
-
-        BroadcastDispatcher::dispatch($event, [
-            'dataset_id' => $event->datasetId,
-            'status' => $event->status->value,
-        ]);
+        event(new DatasetIngestionFailed($dataset, $message));
     }
 
     public function featuresTableExists(): bool

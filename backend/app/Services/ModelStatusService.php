@@ -2,10 +2,9 @@
 
 namespace App\Services;
 
+use App\Domain\Models\Events\ModelStatusChanged;
 use App\Enums\ModelStatus;
-use App\Events\ModelStatusUpdated;
 use App\Models\PredictiveModel;
-use App\Support\Broadcasting\BroadcastDispatcher;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Redis;
 use Throwable;
@@ -113,16 +112,13 @@ class ModelStatusService
             // Redis failures should not prevent the request lifecycle.
         }
 
-        BroadcastDispatcher::dispatch(new ModelStatusUpdated(
+        event(new ModelStatusChanged(
             $modelId,
             $payload['state'],
             $payload['progress'],
             $payload['updated_at'],
             $payload['message'],
-        ), [
-            'model_id' => $modelId,
-            'state' => $payload['state'],
-        ]);
+        ));
 
         return $payload;
     }

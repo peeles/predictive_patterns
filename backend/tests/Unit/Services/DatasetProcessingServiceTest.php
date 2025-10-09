@@ -2,6 +2,8 @@
 
 namespace Tests\Unit\Services;
 
+use App\Events\Datasets\DatasetIngestionCompleted;
+use App\Events\Datasets\DatasetIngestionProgressed;
 use App\Enums\DatasetStatus;
 use App\Events\DatasetStatusUpdated;
 use App\Jobs\CompleteDatasetIngestion;
@@ -24,7 +26,11 @@ class DatasetProcessingServiceTest extends TestCase
         ]);
 
         Bus::fake();
-        Event::fake([DatasetStatusUpdated::class]);
+        Event::fake([
+            DatasetIngestionProgressed::class,
+            DatasetIngestionCompleted::class,
+            DatasetStatusUpdated::class,
+        ]);
 
         $dataset = Dataset::factory()->create([
             'status' => DatasetStatus::Processing,
@@ -36,7 +42,10 @@ class DatasetProcessingServiceTest extends TestCase
         $service->queueFinalise($dataset);
 
         Bus::assertNotDispatched(CompleteDatasetIngestion::class);
-        Event::assertDispatchedTimes(DatasetStatusUpdated::class, 1);
+        Event::assertDispatched(DatasetIngestionCompleted::class, function (DatasetIngestionCompleted $event) use ($dataset) {
+            return $event->dataset->is($dataset);
+        });
+        Event::assertDispatched(DatasetIngestionProgressed::class);
         Event::assertDispatched(DatasetStatusUpdated::class, function (DatasetStatusUpdated $event) use ($dataset) {
             return $event->datasetId === $dataset->getKey()
                 && $event->progress === 1.0

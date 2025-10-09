@@ -2,12 +2,13 @@
 
 namespace App\Jobs;
 
+use App\Events\Datasets\DatasetIngestionFailed;
+use App\Events\Datasets\DatasetIngestionProgressed;
+use App\Events\Datasets\DatasetIngestionStarted;
 use App\Enums\DatasetStatus;
-use App\Events\DatasetStatusUpdated;
 use App\Models\Dataset;
 use App\Repositories\DatasetRepositoryInterface;
 use App\Services\DatasetProcessingService;
-use App\Support\Broadcasting\BroadcastDispatcher;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -66,11 +67,8 @@ class IngestRemoteDataset implements ShouldQueue
         $dataset->status = DatasetStatus::Processing;
         $dataset->save();
 
-        $event = DatasetStatusUpdated::fromDataset($dataset);
-        BroadcastDispatcher::dispatch($event, [
-            'dataset_id' => $event->datasetId,
-            'status' => $event->status->value,
-        ]);
+        event(new DatasetIngestionStarted($dataset, 0.0));
+        event(new DatasetIngestionProgressed($dataset, 0.0));
 
         $disk = Storage::disk('local');
         $path = null;
@@ -148,11 +146,7 @@ class IngestRemoteDataset implements ShouldQueue
             ]);
             $dataset->save();
 
-            $event = DatasetStatusUpdated::fromDataset($dataset);
-            BroadcastDispatcher::dispatch($event, [
-                'dataset_id' => $event->datasetId,
-                'status' => $event->status->value,
-            ]);
+            event(new DatasetIngestionFailed($dataset, $exception->getMessage()));
 
             throw $exception;
         } finally {
