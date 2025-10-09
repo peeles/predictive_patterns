@@ -84,8 +84,8 @@ return [
     */
 
     'waits' => [
-        'redis:default' => (int) env('HORIZON_DEFAULT_WAIT', 60),
-        sprintf('redis:%s', env('TRAINING_QUEUE', 'training')) => (int) env('HORIZON_TRAINING_WAIT', 300),
+        'redis:default' => 60,
+        'redis:training' => 300,
     ],
 
     /*
@@ -211,6 +211,20 @@ return [
             'timeout' => (int) env('HORIZON_TRAINING_TIMEOUT', 3600),
             'nice' => (int) env('HORIZON_TRAINING_NICE', 0),
         ],
+        'supervisor-training' => [
+            'connection' => env('HORIZON_TRAINING_CONNECTION', 'training'),
+            'queue' => [env('TRAINING_QUEUE', 'training')],
+            'balance' => 'simple',
+            'autoScalingStrategy' => 'time',
+            'minProcesses' => 1,
+            'maxProcesses' => 2,
+            'maxTime' => 0,
+            'maxJobs' => 0,
+            'memory' => 512,
+            'tries' => 1,
+            'timeout' => (int) env('TRAINING_QUEUE_TIMEOUT', 3600),
+            'nice' => 0,
+        ],
     ],
 
     'environments' => [
@@ -231,6 +245,11 @@ return [
                 'minProcesses' => 1,
                 'maxProcesses' => (int) env('HORIZON_TRAINING_MAX_PROCESSES', 2),
             ],
+            'supervisor-training' => [
+                'maxProcesses' => (int) env('HORIZON_TRAINING_MAX_PROCESSES', 4),
+                'balanceMaxShift' => 1,
+                'balanceCooldown' => 10,
+            ],
         ],
 
         'local' => [
@@ -243,6 +262,9 @@ return [
                 'connection' => env('HORIZON_TRAINING_CONNECTION', 'training'),
                 'queue' => [env('TRAINING_QUEUE', 'training')],
                 'maxProcesses' => (int) env('HORIZON_LOCAL_TRAINING_MAX_PROCESSES', 1),
+            ],
+            'supervisor-training' => [
+                'maxProcesses' => 1,
             ],
         ],
     ],
