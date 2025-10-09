@@ -13,7 +13,7 @@ should_run_migrations() {
 }
 
 if [ -f artisan ] && should_run_migrations; then
-    php artisan migrate --force --no-interaction
+    php artisan migrate --force --no-interaction --seed
 fi
 
 exec "$@"

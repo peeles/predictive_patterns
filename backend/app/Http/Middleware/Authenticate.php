@@ -23,6 +23,10 @@ class Authenticate extends Middleware
 
         $fallbackUrl = (string) (config('app.url') ?? '/');
 
-        return $fallbackUrl !== '' ? $fallbackUrl : '/';
+        if ($fallbackUrl === '') {
+            return '/login';
+        }
+
+        return rtrim($fallbackUrl, '/') . '/login';
     }
 }

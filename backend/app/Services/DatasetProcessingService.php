@@ -132,14 +132,8 @@ class DatasetProcessingService
 
         $this->datasetRepository->refreshFeatureCount($dataset);
 
-        if ($driver !== 'sync') {
-            $event = DatasetStatusUpdated::fromDataset($dataset, 1.0);
-            BroadcastDispatcher::dispatch($event, [
-                'dataset_id' => $event->datasetId,
-                'status' => $event->status->value,
-                'progress' => $event->progress,
-            ]);
-        }
+        $dataset->refresh();
+        $this->broadcastProgress($dataset, 1.0);
 
         return $dataset;
     }

@@ -88,7 +88,11 @@ class DatasetIngestionAction
 
         $dataset = $this->processingService->queueFinalise($dataset, $schemaMapping, $additionalMetadata);
 
-        return $dataset->refresh();
+        if ($this->shouldRefreshAfterQueue()) {
+            return $dataset->refresh();
+        }
+
+        return $dataset;
     }
 
     /**
@@ -158,5 +162,17 @@ class DatasetIngestionAction
         $dataset->file_path = $path;
         $dataset->mime_type = $mimeType;
         $dataset->checksum = hash_file('sha256', Storage::disk('local')->path($path));
+    }
+
+    private function shouldRefreshAfterQueue(): bool
+    {
+        $connection = (string) config('queue.default', 'sync');
+        $driver = config(sprintf('queue.connections.%s.driver', $connection));
+
+        if ($driver === null && $connection !== '') {
+            $driver = config(sprintf('queue.connections.%s.driver', config('queue.default')));
+        }
+
+        return $driver === 'null';
     }
 }
