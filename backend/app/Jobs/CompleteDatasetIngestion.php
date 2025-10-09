@@ -2,7 +2,7 @@
 
 namespace App\Jobs;
 
-use App\Models\Dataset;
+use App\Repositories\DatasetRepositoryInterface;
 use App\Services\DatasetProcessingService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -31,9 +31,9 @@ class CompleteDatasetIngestion implements ShouldQueue
     ) {
     }
 
-    public function handle(DatasetProcessingService $processingService): void
+    public function handle(DatasetProcessingService $processingService, DatasetRepositoryInterface $datasets): void
     {
-        $dataset = Dataset::query()->find($this->datasetId);
+        $dataset = $datasets->find($this->datasetId);
 
         if ($dataset === null) {
             return;
@@ -44,7 +44,7 @@ class CompleteDatasetIngestion implements ShouldQueue
 
     public function failed(Throwable $exception): void
     {
-        $dataset = Dataset::query()->find($this->datasetId);
+        $dataset = app(DatasetRepositoryInterface::class)->find($this->datasetId);
 
         if ($dataset === null) {
             return;

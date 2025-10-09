@@ -10,6 +10,8 @@ use App\Http\Resources\PredictionDetailResource;
 use App\Models\Dataset;
 use App\Models\Prediction;
 use App\Models\PredictiveModel;
+use App\Repositories\DatasetRepositoryInterface;
+use App\Repositories\PredictiveModelRepositoryInterface;
 use App\Services\PredictionService;
 use App\Support\InteractsWithPagination;
 use Illuminate\Auth\Access\AuthorizationException;
@@ -90,14 +92,19 @@ class PredictionController extends BaseController
      * @return JsonResponse
      * @throws AuthorizationException
      */
-    public function store(PredictionStoreRequest $request, PredictionService $service): JsonResponse
+    public function store(
+        PredictionStoreRequest $request,
+        PredictionService $service,
+        PredictiveModelRepositoryInterface $models,
+        DatasetRepositoryInterface $datasets,
+    ): JsonResponse
     {
         $this->authorize('create', Prediction::class);
 
         $validated = $request->validated();
-        $model = PredictiveModel::query()->findOrFail($validated['model_id']);
+        $model = $models->findOrFail($validated['model_id']);
         $datasetId = $validated['dataset_id'] ?? null;
-        $dataset = $datasetId !== null ? Dataset::query()->findOrFail($datasetId) : null;
+        $dataset = $datasetId !== null ? $datasets->findOrFail($datasetId) : null;
 
         $prediction = $service->queuePrediction(
             $model,

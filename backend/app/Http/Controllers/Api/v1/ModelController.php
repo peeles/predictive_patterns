@@ -14,6 +14,7 @@ use App\Http\Resources\ModelResource;
 use App\Jobs\EvaluateModelJob;
 use App\Jobs\TrainModelJob;
 use App\Models\PredictiveModel;
+use App\Repositories\PredictiveModelRepositoryInterface;
 use App\Models\TrainingRun;
 use App\Models\User;
 use App\Services\IdempotencyService;
@@ -31,7 +32,7 @@ class ModelController extends BaseController
 {
     use InteractsWithPagination;
 
-    public function __construct()
+    public function __construct(private readonly PredictiveModelRepositoryInterface $models)
     {
         $this->middleware(['auth.api', 'throttle:api']);
     }
@@ -45,7 +46,7 @@ class ModelController extends BaseController
      */
     public function index(ModelIndexRequest $request): JsonResponse
     {
-        $query = PredictiveModel::query()->with(['trainingRuns' => function ($query): void {
+        $query = $this->models->query()->with(['trainingRuns' => function ($query): void {
             $query->latest('created_at')->limit(3);
         }]);
 
@@ -145,7 +146,7 @@ class ModelController extends BaseController
      */
     public function show(string $id): JsonResponse
     {
-        $model = PredictiveModel::query()
+        $model = $this->models->query()
             ->with(['trainingRuns' => fn ($query) => $query->orderByDesc('created_at')->limit(5)])
             ->findOrFail($id);
 
@@ -164,7 +165,7 @@ class ModelController extends BaseController
      */
     public function artifacts(string $id): JsonResponse
     {
-        $model = PredictiveModel::query()->findOrFail($id);
+        $model = $this->models->findOrFail($id);
 
         $this->authorize('view', $model);
 
@@ -213,7 +214,7 @@ class ModelController extends BaseController
      */
     public function metrics(string $id): JsonResponse
     {
-        $model = PredictiveModel::query()
+        $model = $this->models->query()
             ->with(['trainingRuns' => fn ($query) => $query->orderByDesc('created_at')->limit(10)])
             ->findOrFail($id);
 
@@ -257,7 +258,7 @@ class ModelController extends BaseController
      */
     public function rollback(string $id, RollbackModelRequest $request): JsonResponse
     {
-        $model = PredictiveModel::query()->findOrFail($id);
+        $model = $this->models->findOrFail($id);
 
         $this->authorize('train', $model);
 
@@ -317,7 +318,7 @@ class ModelController extends BaseController
         IdempotencyService $idempotencyService,
     ): JsonResponse {
         $validated = $request->validated();
-        $model = PredictiveModel::query()->findOrFail($validated['model_id']);
+        $model = $this->models->findOrFail($validated['model_id']);
 
         $this->authorize('train', $model);
 
@@ -380,7 +381,7 @@ class ModelController extends BaseController
         ModelStatusService $statusService,
         IdempotencyService $idempotencyService,
     ): JsonResponse {
-        $model = PredictiveModel::query()->findOrFail($id);
+        $model = $this->models->findOrFail($id);
 
         $this->authorize('evaluate', $model);
 
@@ -426,7 +427,7 @@ class ModelController extends BaseController
      */
     public function activate(string $id, ModelRegistry $registry): JsonResponse
     {
-        $model = PredictiveModel::query()->findOrFail($id);
+        $model = $this->models->findOrFail($id);
 
         $this->authorize('activate', $model);
 
@@ -444,7 +445,7 @@ class ModelController extends BaseController
      */
     public function deactivate(string $id, ModelRegistry $registry): JsonResponse
     {
-        $model = PredictiveModel::query()->findOrFail($id);
+        $model = $this->models->findOrFail($id);
 
         $this->authorize('deactivate', $model);
 

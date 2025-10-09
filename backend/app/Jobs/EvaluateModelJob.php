@@ -4,6 +4,8 @@ namespace App\Jobs;
 
 use App\Models\Dataset;
 use App\Models\PredictiveModel;
+use App\Repositories\DatasetRepositoryInterface;
+use App\Repositories\PredictiveModelRepositoryInterface;
 use App\Services\ModelEvaluationService;
 use App\Services\ModelStatusService;
 use Illuminate\Bus\Queueable;
@@ -39,9 +41,14 @@ class EvaluateModelJob implements ShouldQueue
      * @throws Throwable
      * @throws RandomException
      */
-    public function handle(ModelStatusService $statusService, ModelEvaluationService $evaluationService): void
+    public function handle(
+        ModelStatusService $statusService,
+        ModelEvaluationService $evaluationService,
+        PredictiveModelRepositoryInterface $models,
+        DatasetRepositoryInterface $datasets,
+    ): void
     {
-        $model = PredictiveModel::query()->findOrFail($this->modelId);
+        $model = $models->findOrFail($this->modelId);
         $metadata = $model->metadata ?? [];
 
         $statusService->markProgress($model->id, 'evaluating', 5.0);
@@ -51,7 +58,7 @@ class EvaluateModelJob implements ShouldQueue
 
         try {
             if ($this->datasetId !== null) {
-                $dataset = Dataset::query()->findOrFail($this->datasetId);
+                $dataset = $datasets->findOrFail($this->datasetId);
             } else {
                 $dataset = $model->dataset;
             }

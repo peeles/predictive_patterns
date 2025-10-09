@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Enums\DatasetStatus;
 use App\Events\DatasetStatusUpdated;
 use App\Models\Dataset;
+use App\Repositories\DatasetRepositoryInterface;
 use App\Services\DatasetProcessingService;
 use App\Support\Broadcasting\BroadcastDispatcher;
 use Illuminate\Bus\Queueable;
@@ -50,9 +51,9 @@ class IngestRemoteDataset implements ShouldQueue
      * @throws Throwable
      * @throws ConnectionException
      */
-    public function handle(DatasetProcessingService $processingService): void
+    public function handle(DatasetProcessingService $processingService, DatasetRepositoryInterface $datasets): void
     {
-        $dataset = Dataset::query()->find($this->datasetId);
+        $dataset = $datasets->find($this->datasetId);
 
         if (! $dataset instanceof Dataset) {
             return;
