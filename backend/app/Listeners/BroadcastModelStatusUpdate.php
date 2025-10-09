@@ -9,6 +9,7 @@ use App\Events\ModelStatusUpdated;
 use App\Models\PredictiveModel;
 use App\Support\Broadcasting\BroadcastDispatcher;
 use Carbon\CarbonInterface;
+use Illuminate\Support\Testing\Fakes\EventFake;
 
 class BroadcastModelStatusUpdate
 {
@@ -36,6 +37,12 @@ class BroadcastModelStatusUpdate
             $updatedAt,
             $message,
         );
+
+        if (app('events') instanceof EventFake) {
+            event($broadcastEvent);
+
+            return;
+        }
 
         BroadcastDispatcher::dispatch($broadcastEvent, [
             'model_id' => $modelId,

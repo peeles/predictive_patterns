@@ -44,10 +44,13 @@ class EvaluateModelJob implements ShouldQueue
     public function handle(
         ModelStatusService $statusService,
         ModelEvaluationService $evaluationService,
-        PredictiveModelRepositoryInterface $models,
-        DatasetRepositoryInterface $datasets,
+        ?PredictiveModelRepositoryInterface $models = null,
+        ?DatasetRepositoryInterface $datasets = null,
     ): void
     {
+        $models ??= app(PredictiveModelRepositoryInterface::class);
+        $datasets ??= app(DatasetRepositoryInterface::class);
+
         $model = $models->findOrFail($this->modelId);
         $metadata = $model->metadata ?? [];
 
