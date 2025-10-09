@@ -17,6 +17,9 @@ return [
         'login' => (int) env('API_RATE_LIMIT_AUTH_LOGIN', 10),
         'refresh' => (int) env('API_RATE_LIMIT_AUTH_REFRESH', 60),
     ],
+    'ingest_rate_limit' => (int) env('API_RATE_LIMIT_INGEST', 5),
+    'model_training_rate_limit' => (int) env('API_RATE_LIMIT_MODEL_TRAIN', 5),
+    'model_evaluation_rate_limit' => (int) env('API_RATE_LIMIT_MODEL_EVALUATE', 5),
     'idempotency_ttl' => (int) env('API_IDEMPOTENCY_TTL', 300),
     'payload_limits' => [
         'ingest' => (int) env('API_PAYLOAD_MAX_KB', 204_800),

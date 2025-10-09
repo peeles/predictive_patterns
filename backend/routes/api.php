@@ -43,7 +43,8 @@ Route::prefix('v1')->group(function () use ($authRoutes): void {
     Route::middleware('auth.api')->group(function (): void {
         Route::get('/datasets', [DatasetController::class, 'index']);
         Route::get('/datasets/runs', [DatasetController::class, 'runs']);
-        Route::post('/datasets/ingest', [DatasetController::class, 'ingest']);
+        Route::post('/datasets/ingest', [DatasetController::class, 'ingest'])
+            ->middleware('throttle:ingest');
         Route::get('/datasets/{dataset}', [DatasetController::class, 'show']);
         Route::get('/datasets/{dataset}/analysis', [DatasetController::class, 'analysis']);
 
@@ -61,8 +62,10 @@ Route::prefix('v1')->group(function () use ($authRoutes): void {
         Route::get('/models/{id}/artifacts', [ModelController::class, 'artifacts']);
         Route::get('/models/{id}/metrics', [ModelController::class, 'metrics']);
         Route::get('/models/{id}/status', [ModelController::class, 'status']);
-        Route::post('/models/train', [ModelController::class, 'train']);
-        Route::post('/models/{id}/evaluate', [ModelController::class, 'evaluate']);
+        Route::post('/models/train', [ModelController::class, 'train'])
+            ->middleware('throttle:model-train');
+        Route::post('/models/{id}/evaluate', [ModelController::class, 'evaluate'])
+            ->middleware('throttle:model-evaluate');
         Route::post('/models/{id}/activate', [ModelController::class, 'activate']);
         Route::post('/models/{id}/deactivate', [ModelController::class, 'deactivate']);
         Route::post('/models/{id}/rollback', [ModelController::class, 'rollback']);

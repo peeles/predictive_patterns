@@ -15,6 +15,7 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
 
@@ -486,5 +487,42 @@ CSV;
         $this->assertSame(1, $payload['meta']['total']);
         $this->assertSame(10, $payload['meta']['per_page']);
         $this->assertSame(1, $payload['meta']['current_page']);
+    }
+
+    public function test_dataset_ingest_is_rate_limited(): void
+    {
+        Storage::fake('local');
+        Cache::flush();
+        Bus::fake();
+
+        config(['api.ingest_rate_limit' => 5]);
+
+        $tokens = $this->issueTokensForRole(Role::Admin);
+
+        $payload = static fn (string $name): array => [
+            'name' => $name,
+            'description' => 'Rate limit verification',
+            'source_type' => 'file',
+            'file' => UploadedFile::fake()->createWithContent(
+                $name.'.csv',
+                "Type,Date\nEntry,2024-04-01T00:00:00+00:00\n",
+                'text/csv'
+            ),
+        ];
+
+        for ($i = 0; $i < 5; $i++) {
+            $response = $this->withHeader('Authorization', 'Bearer '.$tokens['accessToken'])
+                ->postJson('/api/v1/datasets/ingest', $payload('Throttled Dataset '.$i));
+
+            $response->assertCreated();
+        }
+
+        $limitResponse = $this->withHeader('Authorization', 'Bearer '.$tokens['accessToken'])
+            ->postJson('/api/v1/datasets/ingest', $payload('Throttled Dataset 5'));
+
+        $limitResponse->assertStatus(429);
+        $limitResponse->assertJsonPath('error.code', 'too_many_requests');
+
+        RateLimiter::clear('ingest|'.$tokens['user']->getAuthIdentifier());
     }
 }

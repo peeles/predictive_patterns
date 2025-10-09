@@ -14,6 +14,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Redis;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Bus;
 use Tests\TestCase;
 
@@ -206,6 +207,42 @@ class ModelApiTest extends TestCase
         $this->assertSame(2, TrainingRun::query()->count());
     }
 
+    public function test_model_training_is_rate_limited(): void
+    {
+        Bus::fake();
+        Event::fake([ModelStatusUpdated::class]);
+        Redis::shouldReceive('setex')->zeroOrMoreTimes()->andReturnTrue();
+        Redis::shouldReceive('publish')->zeroOrMoreTimes()->andReturnTrue();
+        Redis::shouldReceive('get')->zeroOrMoreTimes()->andReturn(null);
+        Redis::shouldReceive('del')->zeroOrMoreTimes()->andReturnTrue();
+
+        config(['api.model_training_rate_limit' => 5]);
+
+        $model = PredictiveModel::factory()->create();
+        $tokens = $this->issueTokensForRole(Role::Admin);
+
+        for ($i = 0; $i < 5; $i++) {
+            $response = $this->withHeader('Authorization', 'Bearer '.$tokens['accessToken'])
+                ->postJson('/api/v1/models/train', [
+                    'model_id' => $model->id,
+                    'hyperparameters' => ['learning_rate' => 0.1 + $i],
+                ]);
+
+            $response->assertAccepted();
+        }
+
+        $limitResponse = $this->withHeader('Authorization', 'Bearer '.$tokens['accessToken'])
+            ->postJson('/api/v1/models/train', [
+                'model_id' => $model->id,
+                'hyperparameters' => ['learning_rate' => 0.6],
+            ]);
+
+        $limitResponse->assertStatus(429);
+        $limitResponse->assertJsonPath('error.code', 'too_many_requests');
+
+        RateLimiter::clear('model-train|'.$tokens['user']->getAuthIdentifier());
+    }
+
     public function test_admin_can_activate_model(): void
     {
         $adminTokens = $this->issueTokensForRole(Role::Admin);
@@ -380,6 +417,42 @@ class ModelApiTest extends TestCase
 
         $response->assertStatus(422);
         $response->assertJsonValidationErrors(['metrics.macro_precision']);
+    }
+
+    public function test_model_evaluation_is_rate_limited(): void
+    {
+        Bus::fake();
+        Event::fake([ModelStatusUpdated::class]);
+        Redis::shouldReceive('setex')->zeroOrMoreTimes()->andReturnTrue();
+        Redis::shouldReceive('publish')->zeroOrMoreTimes()->andReturnTrue();
+        Redis::shouldReceive('get')->zeroOrMoreTimes()->andReturn(null);
+        Redis::shouldReceive('del')->zeroOrMoreTimes()->andReturnTrue();
+
+        config(['api.model_evaluation_rate_limit' => 5]);
+
+        $model = PredictiveModel::factory()->create();
+        $tokens = $this->issueTokensForRole(Role::Admin);
+
+        for ($i = 0; $i < 5; $i++) {
+            $response = $this->withHeader('Authorization', 'Bearer '.$tokens['accessToken'])
+                ->postJson("/api/v1/models/{$model->id}/evaluate", [
+                    'dataset_id' => $model->dataset_id,
+                    'metrics' => ['accuracy' => 0.8 + $i * 0.01],
+                ]);
+
+            $response->assertAccepted();
+        }
+
+        $limitResponse = $this->withHeader('Authorization', 'Bearer '.$tokens['accessToken'])
+            ->postJson("/api/v1/models/{$model->id}/evaluate", [
+                'dataset_id' => $model->dataset_id,
+                'metrics' => ['accuracy' => 0.9],
+            ]);
+
+        $limitResponse->assertStatus(429);
+        $limitResponse->assertJsonPath('error.code', 'too_many_requests');
+
+        RateLimiter::clear('model-evaluate|'.$tokens['user']->getAuthIdentifier());
     }
 
     public function test_status_endpoint_returns_progress_snapshot(): void

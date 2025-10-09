@@ -165,6 +165,27 @@ class AppServiceProvider extends ServiceProvider
             return Limit::perMinute(max($perMinute, 1))->by((string)$identifier);
         });
 
+        RateLimiter::for('ingest', function (Request $request): Limit {
+            $perMinute = (int)config('api.ingest_rate_limit', 5);
+            $identifier = $request->user()?->getAuthIdentifier() ?? $request->ip() ?? 'unknown';
+
+            return Limit::perMinute(max($perMinute, 1))->by((string)$identifier);
+        });
+
+        RateLimiter::for('model-train', function (Request $request): Limit {
+            $perMinute = (int)config('api.model_training_rate_limit', 5);
+            $identifier = $request->user()?->getAuthIdentifier() ?? $request->ip() ?? 'unknown';
+
+            return Limit::perMinute(max($perMinute, 1))->by((string)$identifier);
+        });
+
+        RateLimiter::for('model-evaluate', function (Request $request): Limit {
+            $perMinute = (int)config('api.model_evaluation_rate_limit', 5);
+            $identifier = $request->user()?->getAuthIdentifier() ?? $request->ip() ?? 'unknown';
+
+            return Limit::perMinute(max($perMinute, 1))->by((string)$identifier);
+        });
+
         RateLimiter::for('auth-login', function (Request $request): Limit {
             $perMinute = (int)config('api.auth_rate_limits.login', 10);
             $identifier = $request->ip() ?? 'unknown';
