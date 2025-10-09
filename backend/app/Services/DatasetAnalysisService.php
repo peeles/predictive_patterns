@@ -6,6 +6,7 @@ use App\Models\Dataset;
 use App\Support\DatasetRowBuffer;
 use App\Support\DatasetRowPreprocessor;
 use App\Support\Phpml\ImputerFactory;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Storage;
 use Phpml\Exception\InvalidOperationException;
 use Phpml\Preprocessing\Imputer;
@@ -14,36 +15,62 @@ use RuntimeException;
 
 class DatasetAnalysisService
 {
+    private const CACHE_PREFIX = 'dataset_analysis:';
+    private const CACHE_TTL_MINUTES = 10;
+
     public function analyze(Dataset $dataset): array
     {
+        if ($dataset->getKey() === null) {
+            throw new RuntimeException('Dataset must be persisted before analysis.');
+        }
+
         if ($dataset->file_path === null) {
             throw new RuntimeException('Dataset does not have an associated file.');
         }
 
-        $disk = Storage::disk('local');
+        $cacheKey = $this->cacheKey($dataset);
+        $cacheTags = $this->cacheTags($dataset);
+        $ttl = now()->addMinutes(self::CACHE_TTL_MINUTES);
 
-        if (! $disk->exists($dataset->file_path)) {
-            throw new RuntimeException(sprintf('Dataset file "%s" could not be found.', $dataset->file_path));
-        }
+        return Cache::tags($cacheTags)->remember($cacheKey, $ttl, function () use ($dataset): array {
+            $disk = Storage::disk('local');
 
-        $columnMap = $this->resolveColumnMap($dataset);
-        $prepared = DatasetRowPreprocessor::prepareTrainingData($disk->path($dataset->file_path), $columnMap);
-        $buffer = $prepared['buffer'];
+            if (! $disk->exists($dataset->file_path)) {
+                throw new RuntimeException(sprintf('Dataset file "%s" could not be found.', $dataset->file_path));
+            }
 
-        if (! $buffer instanceof DatasetRowBuffer || $buffer->count() === 0) {
-            throw new RuntimeException('Dataset does not contain any records.');
-        }
+            $columnMap = $this->resolveColumnMap($dataset);
+            $prepared = DatasetRowPreprocessor::prepareTrainingData($disk->path($dataset->file_path), $columnMap);
+            $buffer = $prepared['buffer'];
 
-        $stats = $this->summariseBuffer($buffer);
+            if (! $buffer instanceof DatasetRowBuffer || $buffer->count() === 0) {
+                throw new RuntimeException('Dataset does not contain any records.');
+            }
 
-        return [
-            'rows' => $stats['row_count'],
-            'feature_names' => $prepared['feature_names'],
-            'feature_summary' => $stats['features'],
-            'label_distribution' => $stats['labels'],
-            'categories' => $prepared['categories'],
-            'normalized_preview' => $this->normalizedPreview($stats['sample'], $prepared['feature_names']),
-        ];
+            $stats = $this->summariseBuffer($buffer);
+
+            return [
+                'rows' => $stats['row_count'],
+                'feature_names' => $prepared['feature_names'],
+                'feature_summary' => $stats['features'],
+                'label_distribution' => $stats['labels'],
+                'categories' => $prepared['categories'],
+                'normalized_preview' => $this->normalizedPreview($stats['sample'], $prepared['feature_names']),
+            ];
+        });
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function cacheTags(Dataset $dataset): array
+    {
+        return [sprintf('dataset:%s', $dataset->getKey())];
+    }
+
+    private function cacheKey(Dataset $dataset): string
+    {
+        return self::CACHE_PREFIX . $dataset->getKey();
     }
 
     /**
