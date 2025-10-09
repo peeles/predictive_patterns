@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Jobs\Middleware\LogJobExecution;
 use App\Services\DatasetRecordIngestionService;
+use DateTimeInterface;
 use Illuminate\Bus\Batchable;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
@@ -25,14 +26,28 @@ class IngestDatasetRecords implements ShouldQueue, ShouldBeUnique
 
     public int $tries = 3;
     public int $timeout = 600;
+    public int $maxExceptions = 3;
     public int $uniqueFor = 3600;
 
-    public array $backoff = [60, 300, 900]; // 1min, 5min, 15min
+    public function retryUntil(): DateTimeInterface
+    {
+        return now()->addHours(2);
+    }
+
+    public function backoff(): array
+    {
+        return [60, 300, 900];
+    }
 
     public function __construct(
         public string $yearMonth,
         public bool $dryRun = false
     ) {
+    }
+
+    public function tries(): int
+    {
+        return 3;
     }
 
     public function uniqueId(): string
@@ -47,7 +62,7 @@ class IngestDatasetRecords implements ShouldQueue, ShouldBeUnique
     {
         return [
             new LogJobExecution(),
-            new RateLimited('default'),
+            new RateLimited('jobs:ingest-remote-dataset')
         ];
     }
 

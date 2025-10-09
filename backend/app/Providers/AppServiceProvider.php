@@ -213,5 +213,9 @@ class AppServiceProvider extends ServiceProvider
 
             return Limit::perMinute(max($perMinute, 1))->by((string)$identifier);
         });
+
+        RateLimiter::for('jobs:ingest-remote-dataset', function (): Limit {
+            return Limit::perMinute(10);
+        });
     }
 }

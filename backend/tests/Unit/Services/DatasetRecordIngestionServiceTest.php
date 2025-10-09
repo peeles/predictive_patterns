@@ -1,15 +1,15 @@
 <?php
 
-namespace Tests\Unit;
+namespace Tests\Unit\Services;
 
-use App\Exceptions\DatasetRecordIngestionException;
 use App\Events\DatasetIngestionRunUpdated;
+use App\Exceptions\DatasetRecordIngestionException;
 use App\Exceptions\PoliceCrimeIngestionException;
-use App\Services\H3IndexService;
 use App\Services\DatasetRecordIngestionService;
+use App\Services\H3IndexService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Http;
 use Mockery;
 use Tests\TestCase;
 

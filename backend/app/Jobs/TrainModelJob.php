@@ -9,6 +9,7 @@ use App\Jobs\Middleware\LogJobExecution;
 use App\Models\TrainingRun;
 use App\Services\ModelStatusService;
 use App\Services\ModelTrainingService;
+use DateTimeInterface;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -27,12 +28,14 @@ class TrainModelJob implements ShouldQueue, ShouldBeUnique
     use Queueable;
     use SerializesModels;
 
-    public $connection = 'training';
-    public $queue = 'training';
+    private const CONNECTION = 'training';
+    private const QUEUE = 'training';
     public int $tries = 1;
     public int $timeout = 3600;
     public int $maxExceptions = 1;
     public int $uniqueFor = 3600;
+
+
 
     /**
      * @param array<string, mixed>|null $hyperparameters
@@ -41,6 +44,18 @@ class TrainModelJob implements ShouldQueue, ShouldBeUnique
         private readonly string $trainingRunId,
         private readonly ?array $hyperparameters = null
     ) {
+        $this->onConnection(self::CONNECTION);
+        $this->onQueue(self::QUEUE);
+    }
+
+    public function retryUntil(): DateTimeInterface
+    {
+        return now()->addHours(2);
+    }
+
+    public function backoff(): array
+    {
+        return [60, 300, 900];
     }
 
     /**

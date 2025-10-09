@@ -11,6 +11,13 @@ use Tests\TestCase;
 
 class BroadcastDispatcherTest extends TestCase
 {
+    protected function tearDown(): void
+    {
+        BroadcastDispatcher::resetSuppressedTransport();
+
+        parent::tearDown();
+    }
+
     public function test_it_logs_broadcast_exception_details(): void
     {
         config(['broadcasting.default' => 'pusher']);
@@ -52,6 +59,33 @@ class BroadcastDispatcherTest extends TestCase
                     && ($context['event'] ?? null) === FakeBroadcastEvent::class
                     && ($context['exception'] ?? null) === 'Unexpected failure.';
             });
+    }
+
+    public function test_it_suppresses_repeated_transport_failures(): void
+    {
+        config(['broadcasting.default' => 'redis']);
+
+        Event::shouldReceive('dispatch')
+            ->once()
+            ->withArgs(fn ($event): bool => $event instanceof FakeBroadcastEvent)
+            ->andThrow(new BroadcastException('Connection refused'));
+
+        Log::spy();
+
+        BroadcastDispatcher::dispatch(new FakeBroadcastEvent(), ['dataset_id' => 'ds_123']);
+        BroadcastDispatcher::dispatch(new FakeBroadcastEvent(), ['dataset_id' => 'ds_123']);
+
+        Log::shouldHaveReceived('warning')
+            ->once()
+            ->withArgs(function (string $message, array $context): bool {
+                return $message === 'Broadcast transport unavailable, suppressing further attempts.'
+                    && ($context['event'] ?? null) === FakeBroadcastEvent::class
+                    && ($context['driver'] ?? null) === 'redis'
+                    && ($context['dataset_id'] ?? null) === 'ds_123'
+                    && ($context['exception'] ?? null) === 'Connection refused';
+            });
+
+        Log::shouldNotHaveReceived('error');
     }
 }
 

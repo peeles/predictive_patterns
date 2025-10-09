@@ -1,6 +1,6 @@
 <?php
 
-namespace Tests\Unit;
+namespace Tests\Unit\Jobs;
 
 use App\Enums\PredictionOutputFormat;
 use App\Enums\PredictionStatus;
@@ -28,8 +28,8 @@ use Phpml\Exception\SerializeException;
 use Phpml\ModelManager;
 use Phpml\Preprocessing\Imputer;
 use Phpml\Preprocessing\Normalizer;
-use RuntimeException;
 use ReflectionMethod;
+use RuntimeException;
 use Tests\TestCase;
 use Throwable;
 
