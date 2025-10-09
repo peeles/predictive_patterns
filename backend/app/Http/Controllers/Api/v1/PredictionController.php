@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\Api\v1;
 
 use App\Enums\PredictionStatus;
-use App\Http\Requests\PredictRequest;
+use App\Http\Requests\PredictionStoreRequest;
 use App\Http\Requests\PredictionIndexRequest;
 use App\Http\Resources\PredictionCollection;
 use App\Http\Resources\PredictionDetailResource;
@@ -84,13 +84,13 @@ class PredictionController extends BaseController
     /**
      * Create a new prediction job
      *
-     * @param PredictRequest $request
+     * @param PredictionStoreRequest $request
      * @param PredictionService $service
      *
      * @return JsonResponse
      * @throws AuthorizationException
      */
-    public function store(PredictRequest $request, PredictionService $service): JsonResponse
+    public function store(PredictionStoreRequest $request, PredictionService $service): JsonResponse
     {
         $this->authorize('create', Prediction::class);
 
