@@ -68,46 +68,29 @@ return [
             'after_commit' => false,
         ],
 
-        'training' => (static function () {
-            $defaultDriver = env('QUEUE_CONNECTION', 'database');
-            $supportsRedis = extension_loaded('redis');
-            $driver = env('TRAINING_QUEUE_DRIVER');
-
-            if ($driver === null || $driver === '') {
-                if ($defaultDriver === 'redis' && ! $supportsRedis) {
-                    $driver = 'database';
-                } else {
-                    $driver = $supportsRedis ? $defaultDriver : ($defaultDriver === 'redis' ? 'database' : $defaultDriver);
-                }
-            }
-
-            $connection = env('TRAINING_QUEUE_CONNECTION');
-            if ($connection === '') {
-                $connection = null;
-            }
-
-            if ($driver === 'redis') {
-                $connection ??= env('REDIS_QUEUE_CONNECTION', 'default');
-            } elseif ($driver === 'database') {
-                $connection = env('DB_QUEUE_CONNECTION') ?? env('DB_CONNECTION');
-            }
-
-            return [
-                'driver' => $driver,
-                'connection' => $connection,
-                'queue' => env('TRAINING_QUEUE', 'training'),
-                'retry_after' => (int) env('TRAINING_QUEUE_RETRY_AFTER', 1800),
-                'block_for' => $driver === 'redis' ? env('TRAINING_QUEUE_BLOCK_FOR') : null,
-                'after_commit' => false,
-            ];
-        })(),
-
+        'training' => [
+            'driver' => env('TRAINING_QUEUE_DRIVER', env('QUEUE_CONNECTION', 'redis')),
+            'connection' => env('TRAINING_QUEUE_CONNECTION'),
+            'queue' => env('TRAINING_QUEUE', 'training'),
+            'retry_after' => (int) env('TRAINING_QUEUE_RETRY_AFTER', 1800),
+            'block_for' => env('TRAINING_QUEUE_BLOCK_FOR'),
+            'after_commit' => false,
+        ],
 
         'redis' => [
             'driver' => 'redis',
-            'connection' => env('REDIS_QUEUE_CONNECTION', 'default'),
+            'connection' => 'queue', // Changed from 'default' to 'queue'
             'queue' => env('REDIS_QUEUE', 'default'),
             'retry_after' => (int) env('REDIS_QUEUE_RETRY_AFTER', 90),
+            'block_for' => null,
+            'after_commit' => false,
+        ],
+
+        'broadcasts' => [
+            'driver' => 'redis',
+            'connection' => env('REDIS_QUEUE_CONNECTION', 'default'),
+            'queue' => 'broadcasts',
+            'retry_after' => 30,
             'block_for' => null,
             'after_commit' => false,
         ],

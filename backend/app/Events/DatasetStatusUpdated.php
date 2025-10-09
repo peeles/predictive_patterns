@@ -17,6 +17,10 @@ class DatasetStatusUpdated implements ShouldBroadcast
     use InteractsWithSockets;
     use SerializesModels;
 
+    public string $connection = 'broadcasts';
+    public string $queue = 'broadcasts';
+    public int $tries = 3;
+
     public function __construct(
         public readonly string $datasetId,
         public readonly DatasetStatus $status,

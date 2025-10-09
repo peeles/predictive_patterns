@@ -2,8 +2,8 @@
 
 namespace App\Events;
 
-use App\Enums\CrimeIngestionStatus;
-use App\Models\CrimeIngestionRun;
+use App\Enums\DatasetRecordIngestionStatus;
+use App\Models\DatasetRecordIngestionRun;
 use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
@@ -15,6 +15,10 @@ class DatasetIngestionRunUpdated implements ShouldBroadcast
     use Dispatchable;
     use InteractsWithSockets;
     use SerializesModels;
+
+    public string $connection = 'broadcasts';
+    public string $queue = 'broadcasts';
+    public int $tries = 3;
 
     public function __construct(
         public readonly int $runId,
@@ -32,9 +36,9 @@ class DatasetIngestionRunUpdated implements ShouldBroadcast
     ) {
     }
 
-    public static function fromRun(CrimeIngestionRun $run, ?float $progress = null, ?string $message = null): self
+    public static function fromRun(DatasetRecordIngestionRun $run, ?float $progress = null, ?string $message = null): self
     {
-        $status = $run->status instanceof CrimeIngestionStatus
+        $status = $run->status instanceof DatasetRecordIngestionStatus
             ? $run->status->value
             : (string) $run->status;
 

@@ -18,6 +18,16 @@ class Kernel extends ConsoleKernel
             $yearMonth = Carbon::now()->subMonthNoOverflow()->format('Y-m');
             Artisan::call('dataset-records:ingest', ['ym' => $yearMonth]);
         })->monthlyOn(1, '00:00')->name('dataset-records:ingest previous month');
+
+        // Queue health monitoring
+        $schedule->job(new \App\Jobs\QueueHealthCheck())->everyFiveMinutes();
+
+        // Prune old jobs
+        $schedule->command('queue:prune-failed --hours=168')->daily(); // Keep 7 days
+        $schedule->command('queue:prune-batches --hours=168')->daily();
+
+        // Horizon snapshots
+        $schedule->command('horizon:snapshot')->everyFiveMinutes();
     }
 
     /**

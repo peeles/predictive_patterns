@@ -10,6 +10,7 @@ use App\Services\ModelStatusService;
 use App\Services\ModelTrainingService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
@@ -17,20 +18,32 @@ use Illuminate\Support\Facades\Log;
 use Random\RandomException;
 use Throwable;
 
-class TrainModelJob implements ShouldQueue
+class TrainModelJob implements ShouldQueue, ShouldBeUnique
 {
     use Dispatchable;
     use InteractsWithQueue;
     use Queueable;
     use SerializesModels;
 
+    public $connection = 'training';
+    public $queue = 'training';
+    public int $tries = 1;
+    public int $timeout = 3600;
+    public int $maxExceptions = 1;
+    public int $uniqueFor = 3600;
+
     /**
      * @param array<string, mixed>|null $hyperparameters
      */
-    public function __construct(private readonly string $trainingRunId, private readonly ?array $hyperparameters = null)
+    public function __construct(
+        private readonly string $trainingRunId,
+        private readonly ?array $hyperparameters = null
+    ) {
+    }
+
+    public function uniqueId(): string
     {
-        $this->onConnection('training');
-        $this->onQueue(config('queue.connections.training.queue', 'training'));
+        return "train-model-{$this->trainingRunId}";
     }
 
     /**
@@ -44,7 +57,6 @@ class TrainModelJob implements ShouldQueue
 
         if ($model === null) {
             Log::warning('Training run without associated model', ['training_run_id' => $run->id]);
-
             return;
         }
 
@@ -119,5 +131,13 @@ class TrainModelJob implements ShouldQueue
 
             throw $exception;
         }
+    }
+
+    public function failed(Throwable $exception): void
+    {
+        Log::error('Training job failed in queue', [
+            'training_run_id' => $this->trainingRunId,
+            'exception' => $exception->getMessage(),
+        ]);
     }
 }
