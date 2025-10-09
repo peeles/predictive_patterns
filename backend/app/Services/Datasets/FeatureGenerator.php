@@ -32,8 +32,7 @@ class FeatureGenerator
         array $schema,
         ?callable $progressCallback = null,
         ?int $expectedRowCount = null,
-    ): void
-    {
+    ): void {
         foreach (['timestamp', 'latitude', 'longitude', 'category'] as $requiredField) {
             if (! array_key_exists($requiredField, $schema)) {
                 return;
