@@ -11,6 +11,7 @@ use App\Services\Datasets\FeatureGenerator;
 use App\Services\Datasets\SchemaMapper;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use RedisException;
 use Throwable;
 
 class DatasetProcessingService
@@ -164,15 +165,53 @@ class DatasetProcessingService
             return $this->finalise($dataset, $schemaMapping, $additionalMetadata);
         }
 
-        CompleteDatasetIngestion::dispatch(
-            $dataset->getKey(),
-            $schemaMapping,
-            $additionalMetadata
-        );
+        try {
+            CompleteDatasetIngestion::dispatch(
+                $dataset->getKey(),
+                $schemaMapping,
+                $additionalMetadata
+            );
+        } catch (Throwable $exception) {
+            if ($this->shouldFallbackToSynchronousQueue($exception)) {
+                Log::warning('Queue connection unavailable, finalising dataset synchronously.', [
+                    'dataset_id' => $dataset->getKey(),
+                    'queue_connection' => $connection,
+                    'queue_driver' => $driver,
+                    'exception' => $exception,
+                ]);
+
+                $dataset->refresh();
+
+                return $this->finalise($dataset, $schemaMapping, $additionalMetadata);
+            }
+
+            throw $exception;
+        }
 
         $this->dispatchProgress($dataset, 0.0);
 
         return $dataset;
+    }
+
+    private function shouldFallbackToSynchronousQueue(Throwable $exception): bool
+    {
+        if (class_exists(RedisException::class) && $exception instanceof RedisException) {
+            return true;
+        }
+
+        $message = strtolower($exception->getMessage());
+
+        if ($message !== '' && str_contains($message, 'connection refused')) {
+            return true;
+        }
+
+        $previous = $exception->getPrevious();
+
+        if ($previous instanceof Throwable) {
+            return $this->shouldFallbackToSynchronousQueue($previous);
+        }
+
+        return false;
     }
 
     /**
