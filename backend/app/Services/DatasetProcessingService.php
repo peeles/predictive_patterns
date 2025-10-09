@@ -195,7 +195,7 @@ class DatasetProcessingService
 
     private function shouldFallbackToSynchronousQueue(Throwable $exception): bool
     {
-        if ($exception instanceof RedisException) {
+        if (class_exists(RedisException::class) && $exception instanceof RedisException) {
             return true;
         }
 

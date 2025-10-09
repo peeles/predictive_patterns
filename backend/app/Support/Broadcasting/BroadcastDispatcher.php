@@ -128,7 +128,7 @@ class BroadcastDispatcher
 
     private static function isConnectionFailure(Throwable $exception): bool
     {
-        if ($exception instanceof RedisException) {
+        if (class_exists(RedisException::class) && $exception instanceof RedisException) {
             return true;
         }
 
