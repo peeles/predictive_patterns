@@ -6,6 +6,7 @@ use App\Models\Dataset;
 use App\Support\DatasetRowBuffer;
 use App\Support\DatasetRowPreprocessor;
 use App\Support\Phpml\ImputerFactory;
+use Illuminate\Cache\TaggableStore;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Storage;
 use Phpml\Exception\InvalidOperationException;
@@ -29,35 +30,57 @@ class DatasetAnalysisService
         }
 
         $cacheKey = $this->cacheKey($dataset);
-        $cacheTags = $this->cacheTags($dataset);
         $ttl = now()->addMinutes(self::CACHE_TTL_MINUTES);
 
-        return Cache::tags($cacheTags)->remember($cacheKey, $ttl, function () use ($dataset): array {
-            $disk = Storage::disk('local');
+        if ($this->cacheSupportsTagging()) {
+            $cacheTags = $this->cacheTags($dataset);
 
-            if (! $disk->exists($dataset->file_path)) {
-                throw new RuntimeException(sprintf('Dataset file "%s" could not be found.', $dataset->file_path));
-            }
+            return Cache::tags($cacheTags)->remember($cacheKey, $ttl, function () use ($dataset): array {
+                return $this->performAnalysis($dataset);
+            });
+        }
 
-            $columnMap = $this->resolveColumnMap($dataset);
-            $prepared = DatasetRowPreprocessor::prepareTrainingData($disk->path($dataset->file_path), $columnMap);
-            $buffer = $prepared['buffer'];
-
-            if (! $buffer instanceof DatasetRowBuffer || $buffer->count() === 0) {
-                throw new RuntimeException('Dataset does not contain any records.');
-            }
-
-            $stats = $this->summariseBuffer($buffer);
-
-            return [
-                'rows' => $stats['row_count'],
-                'feature_names' => $prepared['feature_names'],
-                'feature_summary' => $stats['features'],
-                'label_distribution' => $stats['labels'],
-                'categories' => $prepared['categories'],
-                'normalized_preview' => $this->normalizedPreview($stats['sample'], $prepared['feature_names']),
-            ];
+        return Cache::remember($cacheKey, $ttl, function () use ($dataset): array {
+            return $this->performAnalysis($dataset);
         });
+    }
+
+    /**
+     * @return array{
+     *     rows: int,
+     *     feature_names: list<string>,
+     *     feature_summary: array<string, array<string, float>>,
+     *     label_distribution: array<string, int>,
+     *     categories: mixed,
+     *     normalized_preview: list<array<string, mixed>>,
+     * }
+     */
+    private function performAnalysis(Dataset $dataset): array
+    {
+        $disk = Storage::disk('local');
+
+        if (! $disk->exists($dataset->file_path)) {
+            throw new RuntimeException(sprintf('Dataset file "%s" could not be found.', $dataset->file_path));
+        }
+
+        $columnMap = $this->resolveColumnMap($dataset);
+        $prepared = DatasetRowPreprocessor::prepareTrainingData($disk->path($dataset->file_path), $columnMap);
+        $buffer = $prepared['buffer'];
+
+        if (! $buffer instanceof DatasetRowBuffer || $buffer->count() === 0) {
+            throw new RuntimeException('Dataset does not contain any records.');
+        }
+
+        $stats = $this->summariseBuffer($buffer);
+
+        return [
+            'rows' => $stats['row_count'],
+            'feature_names' => $prepared['feature_names'],
+            'feature_summary' => $stats['features'],
+            'label_distribution' => $stats['labels'],
+            'categories' => $prepared['categories'],
+            'normalized_preview' => $this->normalizedPreview($stats['sample'], $prepared['feature_names']),
+        ];
     }
 
     /**
@@ -68,9 +91,19 @@ class DatasetAnalysisService
         return [sprintf('dataset:%s', $dataset->getKey())];
     }
 
-    private function cacheKey(Dataset $dataset): string
+    public static function cacheKeyFor(Dataset $dataset): string
     {
         return self::CACHE_PREFIX . $dataset->getKey();
+    }
+
+    private function cacheKey(Dataset $dataset): string
+    {
+        return self::cacheKeyFor($dataset);
+    }
+
+    private function cacheSupportsTagging(): bool
+    {
+        return Cache::getStore() instanceof TaggableStore;
     }
 
     /**
