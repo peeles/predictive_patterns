@@ -7,6 +7,7 @@ use App\Events\Datasets\DatasetIngestionProgressed;
 use App\Events\Datasets\DatasetIngestionStarted;
 use App\Events\DatasetStatusUpdated;
 use App\Enums\DatasetStatus;
+use App\Jobs\Middleware\LogJobExecution;
 use App\Models\Dataset;
 use App\Repositories\DatasetRepositoryInterface;
 use App\Services\DatasetProcessingService;
@@ -16,6 +17,7 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Queue\Middleware\RateLimited;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -48,6 +50,17 @@ class IngestRemoteDataset implements ShouldQueue
 
     public function __construct(public readonly string $datasetId)
     {
+    }
+
+    /**
+     * @return array<int, object>
+     */
+    public function middleware(): array
+    {
+        return [
+            new LogJobExecution(),
+            new RateLimited('default'),
+        ];
     }
 
     /**
