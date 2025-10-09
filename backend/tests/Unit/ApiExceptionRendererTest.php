@@ -30,10 +30,10 @@ class ApiExceptionRendererTest extends TestCase
         $payload = $response->getData(true);
 
         $this->assertSame(Response::HTTP_UNPROCESSABLE_ENTITY, $response->getStatusCode());
-        $this->assertSame('validation_error', data_get($payload, 'error.code'));
-        $this->assertSame('validation-request-id', data_get($payload, 'error.request_id'));
+        $this->assertSame('validation_error', data_get($payload, 'code'));
+        $this->assertSame('validation-request-id', data_get($payload, 'request_id'));
         $this->assertSame('validation-request-id', $response->headers->get('X-Request-Id'));
-        $this->assertArrayHasKey('errors', data_get($payload, 'error.details'));
+        $this->assertArrayHasKey('count', data_get($payload, 'errors'));
     }
 
     public function test_renders_authentication_exception(): void
@@ -46,8 +46,9 @@ class ApiExceptionRendererTest extends TestCase
         $payload = $response->getData(true);
 
         $this->assertSame(Response::HTTP_UNAUTHORIZED, $response->getStatusCode());
-        $this->assertSame('unauthenticated', data_get($payload, 'error.code'));
-        $this->assertSame('Unauthenticated.', data_get($payload, 'error.message'));
+        $this->assertSame('unauthenticated', data_get($payload, 'code'));
+        $this->assertSame('Unauthenticated.', data_get($payload, 'message'));
+        $this->assertSame([], data_get($payload, 'errors'));
     }
 
     public function test_renders_authorization_exception(): void
@@ -60,7 +61,8 @@ class ApiExceptionRendererTest extends TestCase
         $payload = $response->getData(true);
 
         $this->assertSame(Response::HTTP_FORBIDDEN, $response->getStatusCode());
-        $this->assertSame('forbidden', data_get($payload, 'error.code'));
+        $this->assertSame('forbidden', data_get($payload, 'code'));
+        $this->assertSame([], data_get($payload, 'errors'));
     }
 
     public function test_renders_model_not_found_exception(): void
@@ -73,8 +75,9 @@ class ApiExceptionRendererTest extends TestCase
         $payload = $response->getData(true);
 
         $this->assertSame(Response::HTTP_NOT_FOUND, $response->getStatusCode());
-        $this->assertSame('not_found', data_get($payload, 'error.code'));
-        $this->assertSame('Resource not found.', data_get($payload, 'error.message'));
+        $this->assertSame('not_found', data_get($payload, 'code'));
+        $this->assertSame('Resource not found.', data_get($payload, 'message'));
+        $this->assertSame([], data_get($payload, 'errors'));
     }
 
     public function test_renders_query_exception(): void
@@ -87,8 +90,9 @@ class ApiExceptionRendererTest extends TestCase
         $payload = $response->getData(true);
 
         $this->assertSame(Response::HTTP_INTERNAL_SERVER_ERROR, $response->getStatusCode());
-        $this->assertSame('database_error', data_get($payload, 'error.code'));
-        $this->assertSame('A database error occurred.', data_get($payload, 'error.message'));
+        $this->assertSame('database_error', data_get($payload, 'code'));
+        $this->assertSame('A database error occurred.', data_get($payload, 'message'));
+        $this->assertSame([], data_get($payload, 'errors'));
     }
 
     public function test_renders_http_exception_with_status_specific_code(): void
@@ -101,8 +105,9 @@ class ApiExceptionRendererTest extends TestCase
         $payload = $response->getData(true);
 
         $this->assertSame(Response::HTTP_NOT_FOUND, $response->getStatusCode());
-        $this->assertSame('not_found', data_get($payload, 'error.code'));
-        $this->assertSame('Not Found', data_get($payload, 'error.message'));
+        $this->assertSame('not_found', data_get($payload, 'code'));
+        $this->assertSame('Not Found', data_get($payload, 'message'));
+        $this->assertSame([], data_get($payload, 'errors'));
     }
 
     public function test_generates_request_id_when_missing(): void
@@ -113,8 +118,9 @@ class ApiExceptionRendererTest extends TestCase
         $payload = $response->getData(true);
 
         $this->assertSame(Response::HTTP_INTERNAL_SERVER_ERROR, $response->getStatusCode());
-        $this->assertSame('server_error', data_get($payload, 'error.code'));
-        $this->assertNotEmpty(data_get($payload, 'error.request_id'));
-        $this->assertSame(data_get($payload, 'error.request_id'), $response->headers->get('X-Request-Id'));
+        $this->assertSame('server_error', data_get($payload, 'code'));
+        $this->assertNotEmpty(data_get($payload, 'request_id'));
+        $this->assertSame(data_get($payload, 'request_id'), $response->headers->get('X-Request-Id'));
+        $this->assertSame([], data_get($payload, 'errors'));
     }
 }

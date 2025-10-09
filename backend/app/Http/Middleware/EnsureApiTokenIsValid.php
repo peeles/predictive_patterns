@@ -4,11 +4,11 @@ namespace App\Http\Middleware;
 
 use App\Support\SanctumTokenManager;
 use Closure;
+use Illuminate\Auth\AuthenticationException;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Laravel\Sanctum\PersonalAccessToken;
-use Symfony\Component\HttpFoundation\Response;
 
 class EnsureApiTokenIsValid
 {
@@ -24,20 +24,21 @@ class EnsureApiTokenIsValid
         $providedToken = $this->extractToken($request);
 
         if ($providedToken === null) {
-            abort(Response::HTTP_UNAUTHORIZED, 'Invalid API token.');
+            throw new AuthenticationException('Invalid API token.');
         }
 
         $accessToken = SanctumTokenManager::resolveAccessToken($providedToken);
 
         if (! $accessToken instanceof PersonalAccessToken) {
-            abort(Response::HTTP_UNAUTHORIZED, 'Invalid API token.');
+            throw new AuthenticationException('Invalid API token.');
         }
 
         $user = $accessToken->tokenable;
 
         if (! $user instanceof Authenticatable) {
             $accessToken->delete();
-            abort(Response::HTTP_UNAUTHORIZED, 'Invalid API token.');
+
+            throw new AuthenticationException('Invalid API token.');
         }
 
         $request->setUserResolver(fn (): Authenticatable => $user);

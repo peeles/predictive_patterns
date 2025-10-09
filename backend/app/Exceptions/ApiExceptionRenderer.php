@@ -18,43 +18,29 @@ class ApiExceptionRenderer
 {
     public static function render(Throwable $exception, Request $request): JsonResponse
     {
-        if ($exception instanceof ValidationException) {
-            $requestId = self::resolveRequestId($request);
-            $response = response()->json([
-                'error' => [
-                    'code' => 'validation_error',
-                    'message' => $exception->getMessage() ?: 'The given data was invalid.',
-                    'details' => [
-                        'errors' => $exception->errors(),
-                    ],
-                    'request_id' => $requestId,
-                ],
-                'errors' => $exception->errors(),
-            ], $exception->status ?? Response::HTTP_UNPROCESSABLE_ENTITY);
-
-            return $response->withHeaders(['X-Request-Id' => $requestId]);
-        }
-
-        [$code, $message, $status, $details] = self::mapException($exception);
-
         $requestId = self::resolveRequestId($request);
 
-        $response = response()->json([
-            'error' => [
-                'code' => $code,
-                'message' => $message,
-                'details' => $details,
-                'request_id' => $requestId,
-            ],
-        ], $status);
-
-        $headers = ['X-Request-Id' => $requestId];
-
-        if ($exception instanceof HttpExceptionInterface) {
-            $headers = array_merge($exception->getHeaders(), $headers);
+        if ($exception instanceof ValidationException) {
+            return self::respond(
+                code: 'validation_error',
+                message: $exception->getMessage() ?: 'The given data was invalid.',
+                errors: $exception->errors(),
+                status: $exception->status ?? Response::HTTP_UNPROCESSABLE_ENTITY,
+                exception: $exception,
+                requestId: $requestId,
+            );
         }
 
-        return $response->withHeaders($headers);
+        [$code, $message, $status, $errors] = self::mapException($exception);
+
+        return self::respond(
+            code: $code,
+            message: $message,
+            errors: $errors,
+            status: $status,
+            exception: $exception,
+            requestId: $requestId,
+        );
     }
 
     private static function mapException(Throwable $exception): array
@@ -97,6 +83,32 @@ class ApiExceptionRenderer
                 null,
             ],
         };
+    }
+
+    private static function respond(
+        string $code,
+        string $message,
+        ?array $errors,
+        int $status,
+        Throwable $exception,
+        string $requestId
+    ): JsonResponse {
+        $payload = [
+            'code' => $code,
+            'message' => $message,
+            'errors' => $errors ?? [],
+            'request_id' => $requestId,
+        ];
+
+        $response = response()->json($payload, $status);
+
+        $headers = ['X-Request-Id' => $requestId];
+
+        if ($exception instanceof HttpExceptionInterface) {
+            $headers = array_merge($exception->getHeaders(), $headers);
+        }
+
+        return $response->withHeaders($headers);
     }
 
     private static function resolveRequestId(Request $request): string
