@@ -73,14 +73,46 @@ class IngestRemoteDatasetTest extends TestCase
         ]);
 
         Event::assertDispatched(DatasetStatusUpdated::class, function (DatasetStatusUpdated $event) use ($dataset) {
-            return $event->datasetId === $dataset->id && $event->status === DatasetStatus::Processing;
+            return $event->datasetId === $dataset->id
+                && $event->status === DatasetStatus::Processing
+                && $event->progress === null;
         });
 
         Event::assertDispatched(DatasetStatusUpdated::class, function (DatasetStatusUpdated $event) use ($dataset) {
-            return $event->datasetId === $dataset->id && $event->status === DatasetStatus::Ready;
+            return $event->datasetId === $dataset->id
+                && $event->status === DatasetStatus::Processing
+                && $this->progressEquals($event->progress, 0.1);
         });
 
-        Event::assertDispatchedTimes(DatasetStatusUpdated::class, 2);
+        Event::assertDispatched(DatasetStatusUpdated::class, function (DatasetStatusUpdated $event) use ($dataset) {
+            return $event->datasetId === $dataset->id
+                && $event->status === DatasetStatus::Processing
+                && $this->progressEquals($event->progress, 0.25);
+        });
+
+        Event::assertDispatched(DatasetStatusUpdated::class, function (DatasetStatusUpdated $event) use ($dataset) {
+            return $event->datasetId === $dataset->id
+                && $event->status === DatasetStatus::Ready
+                && $this->progressEquals($event->progress, 0.5);
+        });
+
+        Event::assertDispatched(DatasetStatusUpdated::class, function (DatasetStatusUpdated $event) use ($dataset) {
+            return $event->datasetId === $dataset->id
+                && $event->status === DatasetStatus::Ready
+                && $this->progressEquals($event->progress, 0.6);
+        });
+
+        Event::assertDispatched(DatasetStatusUpdated::class, function (DatasetStatusUpdated $event) use ($dataset) {
+            return $event->datasetId === $dataset->id
+                && $event->status === DatasetStatus::Ready
+                && $this->progressEquals($event->progress, 0.95);
+        });
+
+        Event::assertDispatched(DatasetStatusUpdated::class, function (DatasetStatusUpdated $event) use ($dataset) {
+            return $event->datasetId === $dataset->id
+                && $event->status === DatasetStatus::Ready
+                && $this->progressEquals($event->progress, 1.0);
+        });
     }
 
     public function test_job_marks_dataset_as_failed_when_download_fails(): void
@@ -137,5 +169,14 @@ class IngestRemoteDatasetTest extends TestCase
         });
 
         Event::assertDispatchedTimes(DatasetStatusUpdated::class, 2);
+    }
+
+    private function progressEquals(?float $actual, float $expected, float $delta = 0.0001): bool
+    {
+        if ($actual === null) {
+            return false;
+        }
+
+        return abs($actual - $expected) <= $delta;
     }
 }

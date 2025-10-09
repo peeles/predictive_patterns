@@ -38,7 +38,11 @@ class DatasetProcessingService
             $dataset->metadata = $this->datasetRepository->mergeMetadata($dataset->metadata, $additionalMetadata);
         }
 
+        $this->broadcastProgress($dataset, 0.1);
+
         $preview = $this->generatePreview($dataset);
+
+        $this->broadcastProgress($dataset, 0.25);
 
         if ($preview !== null) {
             $metadata = array_filter([
@@ -72,9 +76,56 @@ class DatasetProcessingService
 
         $this->datasetRepository->markAsReady($dataset);
 
+        $this->broadcastProgress($dataset, 0.5);
+
         if ($schemaMapping !== [] && $dataset->file_path !== null && $this->datasetRepository->featuresTableExists()) {
             $dataset->refresh();
-            $this->featureGenerator->populateFromMapping($dataset, $schemaMapping);
+            $this->broadcastProgress($dataset, 0.6);
+
+            $expectedRows = $this->extractRowCount($preview);
+            $featureProgressStart = 0.6;
+            $featureProgressEnd = 0.95;
+            $lastBroadcast = $featureProgressStart;
+
+            $this->featureGenerator->populateFromMapping(
+                $dataset,
+                $schemaMapping,
+                function (int $processed, ?int $expected) use ($dataset, $featureProgressStart, $featureProgressEnd, &$lastBroadcast) {
+                    if ($processed <= 0 && ($expected === null || $expected <= 0)) {
+                        return;
+                    }
+
+                    $progress = $featureProgressEnd;
+
+                    if ($expected !== null && $expected > 0) {
+                        $ratio = min($processed / $expected, 1);
+                        $progress = $featureProgressStart + ($featureProgressEnd - $featureProgressStart) * $ratio;
+                    } elseif ($processed > 0) {
+                        $progress = min($featureProgressEnd, $lastBroadcast + 0.05);
+                    }
+
+                    $shouldBroadcast = false;
+
+                    if ($progress - $lastBroadcast >= 0.05) {
+                        $shouldBroadcast = true;
+                    } elseif ($expected !== null && $expected > 0 && $processed >= $expected && $progress > $lastBroadcast) {
+                        $shouldBroadcast = true;
+                    }
+
+                    if ($shouldBroadcast) {
+                        $lastBroadcast = $progress;
+                        $this->broadcastProgress($dataset, $progress);
+                    }
+                },
+                $expectedRows
+            );
+
+            if ($lastBroadcast < $featureProgressEnd) {
+                $lastBroadcast = $featureProgressEnd;
+                $this->broadcastProgress($dataset, $featureProgressEnd);
+            }
+        } else {
+            $this->broadcastProgress($dataset, 0.75);
         }
 
         $this->datasetRepository->refreshFeatureCount($dataset);
@@ -83,6 +134,7 @@ class DatasetProcessingService
         BroadcastDispatcher::dispatch($event, [
             'dataset_id' => $event->datasetId,
             'status' => $event->status->value,
+            'progress' => $event->progress,
         ]);
 
         return $dataset;
@@ -119,11 +171,7 @@ class DatasetProcessingService
             $additionalMetadata
         );
 
-        $event = DatasetStatusUpdated::fromDataset($dataset, 0.0);
-        BroadcastDispatcher::dispatch($event, [
-            'dataset_id' => $event->datasetId,
-            'status' => $event->status->value,
-        ]);
+        $this->broadcastProgress($dataset, 0.0);
 
         return $dataset;
     }
@@ -184,5 +232,31 @@ class DatasetProcessingService
         }
 
         return null;
+    }
+
+    private function broadcastProgress(Dataset $dataset, ?float $progress, ?string $message = null): void
+    {
+        $event = DatasetStatusUpdated::fromDataset($dataset, $progress, $message);
+
+        BroadcastDispatcher::dispatch($event, [
+            'dataset_id' => $event->datasetId,
+            'status' => $event->status->value,
+            'progress' => $event->progress,
+        ]);
+    }
+
+    private function extractRowCount(?array $preview): ?int
+    {
+        if ($preview === null) {
+            return null;
+        }
+
+        $rowCount = $preview['row_count'] ?? null;
+
+        if ($rowCount === null) {
+            return null;
+        }
+
+        return is_numeric($rowCount) ? max((int) $rowCount, 0) : null;
     }
 }

@@ -70,4 +70,37 @@ class FeatureGeneratorTest extends TestCase
             'name' => 'Robbery',
         ]);
     }
+
+    public function test_populate_from_mapping_invokes_progress_callback(): void
+    {
+        Storage::fake('local');
+
+        $csv = "timestamp,latitude,longitude,category\n2024-01-01T00:00:00Z,51.5,-0.1,Robbery\n2024-01-02T00:00:00Z,51.6,-0.2,Burglary\n";
+        Storage::disk('local')->put('datasets/progress.csv', $csv);
+
+        $dataset = Dataset::factory()->create([
+            'status' => DatasetStatus::Processing,
+            'file_path' => 'datasets/progress.csv',
+            'mime_type' => 'text/csv',
+        ]);
+
+        $updates = [];
+
+        $this->generator->populateFromMapping(
+            $dataset,
+            [
+                'timestamp' => 'timestamp',
+                'latitude' => 'latitude',
+                'longitude' => 'longitude',
+                'category' => 'category',
+            ],
+            static function (int $processed, ?int $expected) use (&$updates) {
+                $updates[] = [$processed, $expected];
+            },
+            2
+        );
+
+        $this->assertNotEmpty($updates);
+        $this->assertSame([2, 2], end($updates));
+    }
 }
