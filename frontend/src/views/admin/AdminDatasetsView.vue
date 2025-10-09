@@ -354,11 +354,13 @@
 
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import PaginationControls from '../../components/common/pagination/PaginationControls.vue'
-import DatasetIngestModal from '../../components/datasets/DatasetIngestModal.vue'
+import {storeToRefs} from "pinia";
+import {useAuthStore} from "../../stores/auth.js";
 import apiClient from '../../services/apiClient'
 import { notifyError } from '../../utils/notifications'
 import { subscribeToChannel, unsubscribeFromChannel } from '../../services/realtime'
+import PaginationControls from '../../components/common/pagination/PaginationControls.vue'
+import DatasetIngestModal from '../../components/datasets/DatasetIngestModal.vue'
 import PageHeader from '../../components/common/PageHeader.vue'
 
 const wizardOpen = ref(false)
@@ -384,11 +386,15 @@ const sortDirection = ref('desc')
 const statusFilter = ref('all')
 const lastRefreshedAt = ref(null)
 const selectedRun = ref(null)
+const datasetSubscriptions = new Map()
 let pollTimer = null
 let copyResetTimer = null
-const datasetSubscriptions = new Map()
 let ingestionRunsSubscription = null
 let ingestionReconnectTimer = null
+
+const authStore = useAuthStore()
+const { isAuthenticated, isSessionHydrated } = storeToRefs(authStore)
+const canUseRealtime = computed(() => isSessionHydrated.value && isAuthenticated.value)
 
 const datasetColumns = [
     { key: 'name', label: 'Name', sortable: true },
@@ -432,7 +438,6 @@ const lastRefreshedLabel = computed(() => formatDateTime(lastRefreshedAt.value))
 onMounted(() => {
     fetchDatasets()
     fetchRuns()
-    ensureIngestionRealtime()
     pollTimer = window.setInterval(() => {
         fetchDatasets(datasetsMeta.value.current_page, { silent: true })
         fetchRuns(meta.value.current_page, { silent: true })
@@ -460,6 +465,20 @@ watch(statusFilter, () => {
     fetchRuns(1)
 })
 
+watch(
+    canUseRealtime,
+    (enabled) => {
+        if (enabled) {
+            ensureIngestionRealtime()
+            syncDatasetSubscriptions()
+        } else {
+            cleanupIngestionRealtime()
+            cleanupDatasetSubscriptions()
+        }
+    },
+    { immediate: true }
+)
+
 function buildDatasetSortParam() {
     return datasetsSortDirection.value === 'desc' ? `-${datasetsSortKey.value}` : datasetsSortKey.value
 }
@@ -484,6 +503,10 @@ function cleanupDatasetSubscriptions() {
 }
 
 function syncDatasetSubscriptions() {
+    if (!canUseRealtime.value) {
+        return
+    }
+
     const activeIds = new Set(
         datasets.value
             .filter((dataset) => dataset.status === 'processing' || dataset.status === 'pending')
@@ -611,6 +634,10 @@ function handleIngestionRunRealtime(payload = {}) {
 }
 
 function ensureIngestionRealtime() {
+    if (!canUseRealtime.value) {
+        return
+    }
+
     if (ingestionRunsSubscription) {
         return
     }
@@ -638,6 +665,10 @@ function ensureIngestionRealtime() {
 
 function scheduleIngestionReconnect(delay = 5000) {
     if (typeof window === 'undefined') {
+        return
+    }
+
+    if (!canUseRealtime.value) {
         return
     }
 

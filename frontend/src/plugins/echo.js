@@ -1,17 +1,19 @@
 import Echo from 'laravel-echo'
 import Pusher from 'pusher-js'
+import { useAuthStore } from '../stores/auth'
+import { getCookie } from '../utils/cookies'
 
-const normalizeEnv = (value) => {
+const normaliseEnv = (value) => {
   if (typeof value !== 'string') {
     return value
   }
 
-  const normalized = value.trim()
-  if (!normalized || normalized.toLowerCase() === 'null' || normalized.toLowerCase() === 'undefined') {
+  const normalised = value.trim()
+  if (!normalised || normalised.toLowerCase() === 'null' || normalised.toLowerCase() === 'undefined') {
     return undefined
   }
 
-  return normalized
+  return normalised
 }
 
 const getWindowLocation = () => {
@@ -24,19 +26,21 @@ const getWindowLocation = () => {
 
 const browserLocation = getWindowLocation()
 
-const pusherHost = normalizeEnv(import.meta.env.VITE_PUSHER_HOST)
-const pusherPort = normalizeEnv(import.meta.env.VITE_PUSHER_PORT)
-const pusherScheme = normalizeEnv(import.meta.env.VITE_PUSHER_SCHEME)
-const pusherCluster = normalizeEnv(import.meta.env.VITE_PUSHER_APP_CLUSTER) ?? 'mt1'
-const apiBaseUrl = normalizeEnv(import.meta.env.VITE_API_URL)
-const explicitAuthEndpoint = normalizeEnv(import.meta.env.VITE_PUSHER_AUTH_ENDPOINT)
+const pusherHost = normaliseEnv(import.meta.env.VITE_PUSHER_HOST)
+const pusherPort = normaliseEnv(import.meta.env.VITE_PUSHER_PORT)
+const pusherScheme = normaliseEnv(import.meta.env.VITE_PUSHER_SCHEME)
+const pusherCluster = normaliseEnv(import.meta.env.VITE_PUSHER_APP_CLUSTER) ?? 'mt1'
+const apiBaseUrl = normaliseEnv(import.meta.env.VITE_API_URL)
+const explicitAuthEndpoint = normaliseEnv(import.meta.env.VITE_PUSHER_AUTH_ENDPOINT)
+const xsrfCookieName = normaliseEnv(import.meta.env.VITE_XSRF_COOKIE_NAME) ?? 'XSRF-TOKEN'
+const xsrfHeaderName = normaliseEnv(import.meta.env.VITE_XSRF_HEADER_NAME) ?? 'X-XSRF-TOKEN'
 
 const baseAuthHeaders = Object.freeze({
   'X-Requested-With': 'XMLHttpRequest',
   Accept: 'application/json',
 })
 
-const sanitizeToken = (token) => {
+const sanitiseToken = (token) => {
   if (typeof token !== 'string') {
     return ''
   }
@@ -46,9 +50,10 @@ const sanitizeToken = (token) => {
   return trimmed.startsWith('Bearer ') ? trimmed : trimmed ? `Bearer ${trimmed}` : ''
 }
 
-const buildAuthHeaders = (token) => {
+export const buildEchoAuthHeaders = (token = '') => {
   const headers = { ...baseAuthHeaders }
-  const bearerToken = sanitizeToken(token)
+  const bearerToken = sanitiseToken(token)
+  const xsrfToken = resolveXsrfToken()
 
   if (bearerToken) {
     headers.Authorization = bearerToken
@@ -56,7 +61,78 @@ const buildAuthHeaders = (token) => {
     delete headers.Authorization
   }
 
+  if (xsrfToken) {
+    headers[xsrfHeaderName] = xsrfToken
+  } else {
+    delete headers[xsrfHeaderName]
+  }
+
   return headers
+}
+
+const decodeXsrfToken = (rawToken) => {
+  if (!rawToken) {
+    return null
+  }
+
+  try {
+    return decodeURIComponent(rawToken)
+  } catch {
+    return rawToken
+  }
+}
+
+const resolveXsrfToken = () => {
+  if (typeof document === 'undefined') {
+    return null
+  }
+
+  const cookie = getCookie('XSRF-TOKEN')
+  return decodeXsrfToken(cookie)
+}
+
+const resolveAuthToken = () => {
+  try {
+    const authStore = useAuthStore?.()
+    const rawToken = authStore?.token
+
+    if (!rawToken) {
+      return ''
+    }
+
+    if (typeof rawToken === 'string') {
+      return rawToken
+    }
+
+    if (typeof rawToken === 'object' && 'value' in rawToken) {
+      const value = rawToken.value
+      return typeof value === 'string' ? value : ''
+    }
+
+    return ''
+  } catch {
+    return ''
+  }
+}
+
+const buildAuthRequestInit = (socketId, channelName) => {
+  const token = resolveAuthToken()
+  const headers = buildEchoAuthHeaders(token)
+  headers['Content-Type'] = 'application/json'
+
+  const xsrfToken = resolveXsrfToken()
+  if (xsrfToken) {
+    headers['X-XSRF-TOKEN'] = xsrfToken
+  }
+
+  const credentials = echoOptions.withCredentials ? 'include' : 'same-origin'
+
+  return {
+    method: 'POST',
+    headers,
+    credentials,
+    body: JSON.stringify({ socket_id: socketId, channel_name: channelName }),
+  }
 }
 
 const resolveScheme = () => {
@@ -138,8 +214,49 @@ const echoOptions = {
   authEndpoint: resolveAuthEndpoint(),
   withCredentials: true,
   auth: {
-    headers: buildAuthHeaders(),
+    headers: buildEchoAuthHeaders(),
   },
+}
+
+echoOptions.authorizer = (channel, options) => {
+  return {
+    authorize(socketId, callback) {
+      const channelName = channel?.name || options?.channelName
+
+      try {
+        const request = buildAuthRequestInit(socketId, channelName)
+
+        fetch(echoOptions.authEndpoint, request)
+            .then(async (response) => {
+              if (!response.ok) {
+                const errorPayload = await response.json().catch(() => null)
+                const status = response.status
+                const error = new Error('Broadcast auth request failed')
+                error.status = status
+                error.payload = errorPayload
+                throw error
+              }
+
+              const payload = await response.json()
+              if (!payload || typeof payload !== 'object' || !payload.auth) {
+                const error = new Error('Broadcast auth response missing auth payload')
+                error.status = response.status
+                error.payload = payload
+                throw error
+              }
+
+              callback(null, payload)
+            })
+            .catch((error) => {
+              console.warn('Echo authorizer error', error)
+              callback(error, null)
+            })
+      } catch (error) {
+        console.warn('Echo authorizer initialization error', error)
+        callback(error, null)
+      }
+    },
+  }
 }
 
 if (resolvedHost) {
@@ -157,37 +274,34 @@ export const echo = new Echo(echoOptions)
 window.Echo = echo
 
 export const updateEchoAuthHeaders = (token = '') => {
-  const headers = buildAuthHeaders(token)
+    const headers = buildEchoAuthHeaders(token)
+    const normalisedHeaders = { ...headers }
 
-  if (!echo || !echo.connector) {
-    return headers
-  }
+    if (!echo || !echo.connector) {
+      return normalisedHeaders
+    }
 
-  const connector = echo.connector
-  const options = connector.options ?? {}
-  const authOptions = { ...(options.auth ?? {}) }
-  const existingHeaders = { ...(authOptions.headers ?? {}) }
+    const connector = echo.connector
+    const options = connector.options ?? {}
+    const authOptions = { ...(options.auth ?? {}) }
 
-  authOptions.headers = { ...existingHeaders, ...headers }
-  connector.options = { ...options, auth: authOptions }
+    authOptions.headers = { ...normalisedHeaders }
+    connector.options = { ...options, auth: authOptions }
 
-  if (echo.options) {
-    const echoAuth = { ...(echo.options.auth ?? {}) }
-    const echoHeaders = { ...(echoAuth.headers ?? {}) }
-    echoAuth.headers = { ...echoHeaders, ...headers }
-    echo.options.auth = echoAuth
-  }
+    if (echo.options) {
+      const echoAuth = { ...(echo.options.auth ?? {}) }
+      echoAuth.headers = { ...normalisedHeaders }
+      echo.options.auth = echoAuth
+    }
 
-  const pusher = connector.pusher ?? (connector.connection ? connector.connection.pusher : null)
+    const pusher = connector.pusher ?? (connector.connection ? connector.connection.pusher : null)
 
-  if (pusher) {
-    const pusherConfig = pusher.config ?? {}
-    const pusherAuth = { ...(pusherConfig.auth ?? {}) }
-    const pusherHeaders = { ...(pusherAuth.headers ?? {}) }
+    if (pusher) {
+      const pusherConfig = pusher.config ?? {}
+      const pusherAuth = { ...(pusherConfig.auth ?? {}) }
+      pusherAuth.headers = { ...normalisedHeaders }
+      pusher.config = { ...pusherConfig, auth: pusherAuth }
+    }
 
-    pusherAuth.headers = { ...pusherHeaders, ...headers }
-    pusher.config = { ...pusherConfig, auth: pusherAuth }
-  }
-
-  return headers
+    return normalisedHeaders
 }
