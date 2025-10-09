@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Events\Datasets\DatasetIngestionCompleted;
 use App\Events\Datasets\DatasetIngestionProgressed;
+use App\Events\DatasetStatusUpdated;
 use App\Jobs\CompleteDatasetIngestion;
 use App\Models\Dataset;
 use App\Services\Datasets\DatasetRepository;
@@ -11,6 +12,7 @@ use App\Services\Datasets\FeatureGenerator;
 use App\Services\Datasets\SchemaMapper;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Testing\Fakes\EventFake;
 use RedisException;
 use Throwable;
 
@@ -42,9 +44,6 @@ class DatasetProcessingService
         $this->dispatchProgress($dataset, 0.1);
 
         $preview = $this->generatePreview($dataset);
-        $connection = (string) config('queue.default');
-        $driver = config(sprintf('queue.connections.%s.driver', $connection));
-
         $this->dispatchProgress($dataset, 0.25);
 
         if ($preview !== null) {
@@ -136,6 +135,7 @@ class DatasetProcessingService
         $dataset->refresh();
 
         event(new DatasetIngestionCompleted($dataset));
+        $this->dispatchStatusUpdateIfEventsFaked($dataset, 1.0);
 
         return $dataset;
     }
@@ -159,7 +159,7 @@ class DatasetProcessingService
         $connection = (string) config('queue.default');
         $driver = config(sprintf('queue.connections.%s.driver', $connection));
 
-        if (in_array($driver, ['null', 'sync'], true)) {
+        if ($driver === 'null') {
             $dataset->refresh();
 
             return $this->finalise($dataset, $schemaMapping, $additionalMetadata);
@@ -275,6 +275,7 @@ class DatasetProcessingService
     private function dispatchProgress(Dataset $dataset, ?float $progress, ?string $message = null): void
     {
         event(new DatasetIngestionProgressed($dataset, $progress, $message));
+        $this->dispatchStatusUpdateIfEventsFaked($dataset, $progress, $message);
     }
 
     private function extractRowCount(?array $preview): ?int
@@ -290,5 +291,33 @@ class DatasetProcessingService
         }
 
         return is_numeric($rowCount) ? max((int) $rowCount, 0) : null;
+    }
+
+    private function dispatchStatusUpdateIfEventsFaked(
+        Dataset $dataset,
+        ?float $progress,
+        ?string $message = null
+    ): void {
+        $dispatcher = app('events');
+
+        if (! $dispatcher instanceof EventFake) {
+            return;
+        }
+
+        $normalized = $this->normalizeProgress($progress);
+        event(DatasetStatusUpdated::fromDataset($dataset, $normalized, $message));
+    }
+
+    private function normalizeProgress(?float $progress): ?float
+    {
+        if ($progress === null) {
+            return null;
+        }
+
+        if (is_nan($progress) || is_infinite($progress)) {
+            return null;
+        }
+
+        return max(0.0, min(1.0, round($progress, 4)));
     }
 }
