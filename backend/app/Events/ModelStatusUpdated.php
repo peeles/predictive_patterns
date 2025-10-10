@@ -17,6 +17,7 @@ class ModelStatusUpdated implements ShouldBroadcast
     public string $connection = 'broadcasts';
     public string $queue = 'broadcasts';
     public int $tries = 3;
+    public int $timeout = 30;
 
     public readonly ?string $message;
 

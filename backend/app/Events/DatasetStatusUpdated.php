@@ -20,6 +20,7 @@ class DatasetStatusUpdated implements ShouldBroadcast
     public string $connection = 'broadcasts';
     public string $queue = 'broadcasts';
     public int $tries = 3;
+    public int $timeout = 30;
 
     public function __construct(
         public readonly string $datasetId,

@@ -19,6 +19,7 @@ class PredictionStatusUpdated implements ShouldBroadcast
     public string $connection = 'broadcasts';
     public string $queue = 'broadcasts';
     public int $tries = 3;
+    public int $timeout = 30;
 
     /**
      * @param float|null $progress Progress as a ratio between 0 and 1.
