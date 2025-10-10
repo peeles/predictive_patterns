@@ -45,11 +45,6 @@ class IngestDatasetRecords implements ShouldQueue, ShouldBeUnique
     ) {
     }
 
-    public function tries(): int
-    {
-        return 3;
-    }
-
     public function uniqueId(): string
     {
         return "ingest-dataset-{$this->yearMonth}";
