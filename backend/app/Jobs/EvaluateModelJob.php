@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Jobs\Concerns\TracksProgress;
 use App\Jobs\Middleware\LogJobExecution;
 use App\Models\Dataset;
 use App\Repositories\DatasetRepositoryInterface;
@@ -22,6 +23,7 @@ use Throwable;
 
 class EvaluateModelJob implements ShouldQueue
 {
+    use TracksProgress;
     use Dispatchable;
     use InteractsWithQueue;
     use Queueable;
@@ -68,6 +70,7 @@ class EvaluateModelJob implements ShouldQueue
         $metadata = $model->metadata ?? [];
 
         $statusService->markProgress($model->id, 'evaluating', 5.0);
+        $this->updateProgress($model->id, 'evaluating', 5.0);
 
         $dataset = null;
         $metrics = $this->metrics;
@@ -104,12 +107,15 @@ class EvaluateModelJob implements ShouldQueue
             ));
 
             $statusService->markProgress($model->id, 'evaluating', 55.0);
+            $this->updateProgress($model->id, 'evaluating', 55.0);
 
             $model->metadata = $metadata;
             $model->save();
 
             $statusService->markProgress($model->id, 'evaluating', 85.0);
+            $this->updateProgress($model->id, 'evaluating', 85.0);
             $statusService->markIdle($model->id);
+            $this->updateProgress($model->id, 'evaluating', 100.0, 'Evaluation complete');
         } catch (Throwable $exception) {
             Log::error('Failed to evaluate model', [
                 'model_id' => $model->id,
@@ -120,6 +126,7 @@ class EvaluateModelJob implements ShouldQueue
             ]);
 
             $statusService->markFailed($model->id, $exception->getMessage());
+            $this->updateProgress($model->id, 'evaluating', 100.0, $exception->getMessage());
 
             throw $exception;
         }

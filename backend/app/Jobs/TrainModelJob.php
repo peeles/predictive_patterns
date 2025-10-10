@@ -6,6 +6,7 @@ use App\Contracts\Queue\ShouldBeAuthorized;
 use App\Domain\Models\Events\ModelTrained;
 use App\Enums\ModelStatus;
 use App\Enums\TrainingStatus;
+use App\Jobs\Concerns\TracksProgress;
 use App\Jobs\Middleware\EnsureJobIsAuthorized;
 use App\Jobs\Middleware\LogJobExecution;
 use App\Jobs\Middleware\NotifyWebhook;
@@ -29,6 +30,7 @@ use Throwable;
 
 class TrainModelJob implements ShouldQueue, ShouldBeUnique, ShouldBeAuthorized
 {
+    use TracksProgress;
     use Dispatchable;
     use InteractsWithQueue;
     use Queueable;
@@ -146,6 +148,7 @@ class TrainModelJob implements ShouldQueue, ShouldBeUnique, ShouldBeAuthorized
         ])->save();
 
         $statusService->markProgress($model->id, 'training', 5.0, 'Preparing training run');
+        $this->updateProgress($model->id, 'training', 5.0, 'Preparing training run');
         $this->recordQueueProgress(5.0);
 
         try {
@@ -155,11 +158,13 @@ class TrainModelJob implements ShouldQueue, ShouldBeUnique, ShouldBeAuthorized
                 $this->hyperparameters ?? $run->hyperparameters ?? [],
                 function (float $progress, ?string $message = null) use ($statusService, $model): void {
                     $statusService->markProgress($model->id, 'training', $progress, $message);
+                    $this->updateProgress($model->id, 'training', $progress, $message);
                     $this->recordQueueProgress($progress);
                 }
             );
 
             $statusService->markProgress($model->id, 'training', 95.0, 'Finalizing training results');
+            $this->updateProgress($model->id, 'training', 95.0, 'Finalizing training results');
             $this->recordQueueProgress(95.0);
             $metrics = $result['metrics'];
             $metadata = array_merge($model->metadata ?? [], $result['metadata']);
@@ -184,6 +189,7 @@ class TrainModelJob implements ShouldQueue, ShouldBeUnique, ShouldBeAuthorized
             $model->refresh();
 
             event(new ModelTrained($model));
+            $this->updateProgress($model->id, 'training', 100.0, 'Training complete');
             $this->recordQueueProgress(100.0);
         } catch (Throwable $exception) {
             $run->fill([
@@ -206,6 +212,7 @@ class TrainModelJob implements ShouldQueue, ShouldBeUnique, ShouldBeAuthorized
             ]);
 
             $statusService->markFailed($model->id, $exception->getMessage());
+            $this->updateProgress($model->id, 'training', 100.0, $exception->getMessage());
 
             $this->recordQueueProgress(100.0);
 
