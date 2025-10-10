@@ -222,7 +222,7 @@ return [
             'balanceCooldown' => 3,
             'maxTime' => 0,
             'maxJobs' => 1, // Added: restart after each job
-            'memory' => 1024, // Increased from 512
+            'memory' => 512,
             'tries' => 1,
             'timeout' => (int) env('TRAINING_QUEUE_TIMEOUT', 3600),
             'nice' => 10, // Added: lower priority

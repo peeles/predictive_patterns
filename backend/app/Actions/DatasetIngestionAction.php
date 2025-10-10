@@ -82,7 +82,7 @@ class DatasetIngestionAction
             $dataset->save();
         }
 
-        $dataset = $this->processingService->queueFinalise($dataset, $schemaMapping, $additionalMetadata);
+        $dataset = $this->processingService->queueFinalise($dataset, $schemaMapping, $additionalMetadata, true);
 
         if ($this->shouldRefreshAfterQueue()) {
             return $dataset->refresh();

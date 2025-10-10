@@ -40,9 +40,10 @@ class DatasetIngestionActionTest extends TestCase
             ->andReturn($expectedMetadata);
         $processingService->shouldReceive('queueFinalise')
             ->once()
-            ->andReturnUsing(function ($dataset, array $schema, array $metadata) use ($expectedMetadata) {
+            ->andReturnUsing(function ($dataset, array $schema, array $metadata, bool $forceQueue) use ($expectedMetadata) {
                 $this->assertSame([], $schema);
                 $this->assertSame($expectedMetadata, $metadata);
+                $this->assertTrue($forceQueue);
 
                 return $dataset;
             });

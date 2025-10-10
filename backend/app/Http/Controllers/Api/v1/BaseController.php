@@ -60,6 +60,25 @@ class BaseController extends Controller
         return response()->json($response, $code);
     }
 
+    protected function rateLimitResponse(string $message, ?int $retryAfter = null, string $code = 'too_many_requests'): JsonResponse
+    {
+        $payload = [
+            'success' => false,
+            'error' => [
+                'code' => $code,
+                'message' => $message,
+            ],
+        ];
+
+        $response = response()->json($payload, 429);
+
+        if ($retryAfter !== null) {
+            $response->headers->set('Retry-After', max(0, $retryAfter));
+        }
+
+        return $response;
+    }
+
     /**
      * @return array{0:mixed,1:array,2:array}
      */

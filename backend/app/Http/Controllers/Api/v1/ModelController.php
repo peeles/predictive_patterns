@@ -22,6 +22,7 @@ use App\Services\ModelRegistry;
 use App\Support\InteractsWithPagination;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use RuntimeException;
@@ -316,6 +317,15 @@ class ModelController extends BaseController
         ModelStatusService $statusService,
         IdempotencyService $idempotencyService,
     ): JsonResponse {
+        if ($response = $this->enforceModelRateLimit(
+            'model-train',
+            (int) config('api.model_training_rate_limit', 0),
+            $request->user()?->getAuthIdentifier(),
+            'You have reached the model training rate limit. Please wait before trying again.'
+        )) {
+            return $response;
+        }
+
         $validated = $request->validated();
         $model = $this->models->findOrFail($validated['model_id']);
 
@@ -387,6 +397,15 @@ class ModelController extends BaseController
         ModelStatusService $statusService,
         IdempotencyService $idempotencyService,
     ): JsonResponse {
+        if ($response = $this->enforceModelRateLimit(
+            'model-evaluate',
+            (int) config('api.model_evaluation_rate_limit', 0),
+            $request->user()?->getAuthIdentifier(),
+            'You have reached the model evaluation rate limit. Please wait before trying again.'
+        )) {
+            return $response;
+        }
+
         $model = $this->models->findOrFail($id);
 
         $this->authorize('evaluate', $model);
@@ -500,5 +519,22 @@ class ModelController extends BaseController
         return $model->fresh([
             'trainingRuns' => fn ($query) => $query->latest('created_at')->limit(3),
         ]) ?? $model;
+    }
+
+    private function enforceModelRateLimit(string $prefix, int $limit, ?string $identifier, string $message): ?JsonResponse
+    {
+        if ($limit <= 0) {
+            return null;
+        }
+
+        $key = sprintf('%s|%s', $prefix, $identifier ?? 'guest');
+
+        if (RateLimiter::remaining($key, $limit) <= 0) {
+            return $this->rateLimitResponse($message, RateLimiter::availableIn($key));
+        }
+
+        RateLimiter::hit($key);
+
+        return null;
     }
 }
