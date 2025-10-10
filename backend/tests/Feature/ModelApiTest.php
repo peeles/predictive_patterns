@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Contracts\Queue\ShouldBeAuthorized;
 use App\Enums\ModelStatus;
 use App\Enums\Role;
 use App\Events\ModelStatusUpdated;
@@ -110,7 +111,8 @@ class ModelApiTest extends TestCase
         Bus::assertDispatched(TrainModelJob::class, function (TrainModelJob $job) use ($webhookUrl): bool {
             return $job->connection === 'training'
                 && $job->queue === config('queue.connections.training.queue', 'training')
-                && $job->getWebhookUrl() === $webhookUrl;
+                && $job->getWebhookUrl() === $webhookUrl
+                && $job instanceof ShouldBeAuthorized;
         });
 
         Event::assertDispatched(ModelStatusUpdated::class, function (ModelStatusUpdated $event) use ($model): bool {
