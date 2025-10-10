@@ -51,8 +51,8 @@ class DatasetApiTest extends TestCase
         $this->assertSame(DatasetStatus::Processing->value, $data['status']);
         $this->assertSame(0, $data['features_count']);
 
-        Bus::assertDispatched(CompleteDatasetIngestion::class, static function (CompleteDatasetIngestion $job) use ($data): bool {
-            $chained = (static function (): array {
+        Bus::assertDispatched(CompleteDatasetIngestion::class, function (CompleteDatasetIngestion $job) use ($data): bool {
+            $chained = (function (): array {
                 return property_exists($this, 'chained') ? (array) $this->chained : [];
             })->call($job);
 

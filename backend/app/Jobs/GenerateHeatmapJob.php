@@ -364,7 +364,7 @@ class GenerateHeatmapJob implements ShouldQueue
 
     /**
      * @return array{
-     *     rows: LazyCollection<int, array<string, string|null>>,
+     *     rows: array<int, array<string, string|null>>,
      *     column_map: array<string, string>
      * }
      */
@@ -435,19 +435,27 @@ class GenerateHeatmapJob implements ShouldQueue
         });
 
         return [
-            'rows' => $rows,
+            'rows' => $rows->values()->all(),
             'column_map' => $columnMap,
         ];
     }
 
     /**
-     * @param LazyCollection<int, array<string, mixed>> $rows
+     * @param iterable<int, array<string, mixed>> $rows
      * @param list<string> $artifactCategories
      *
      * @return LazyCollection<int, array{timestamp: CarbonImmutable, latitude: float, longitude: float, category: string, features: list<float>}>
      */
-    private function prepareEntries(LazyCollection $rows, array $artifactCategories, array $columnMap): LazyCollection
+    private function prepareEntries(iterable $rows, array $artifactCategories, array $columnMap): LazyCollection
     {
+        $lazyRows = $rows instanceof LazyCollection
+            ? $rows
+            : LazyCollection::make(static function () use ($rows) {
+                foreach ($rows as $row) {
+                    yield $row;
+                }
+            });
+
         $categories = array_values(array_map(static fn ($value) => (string) $value, $artifactCategories));
 
         $timestampColumn = $columnMap['timestamp'] ?? 'timestamp';
@@ -456,7 +464,7 @@ class GenerateHeatmapJob implements ShouldQueue
         $categoryColumn = $columnMap['category'] ?? 'category';
         $riskColumn = $columnMap['risk_score'] ?? 'risk_score';
 
-        return $rows
+        return $lazyRows
             ->map(function (array $row) use (
                 $timestampColumn,
                 $latitudeColumn,

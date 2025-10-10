@@ -368,13 +368,14 @@ class GenerateHeatmapJobTest extends TestCase
     }
 
     /**
+     * @param iterable<int, array<string, mixed>> $rows
      * @param list<string> $categories
      *
      * @return list<array{timestamp: CarbonImmutable, latitude: float, longitude: float, category: string, features: list<float>}>
      */
     private function invokePrepareEntries(
         GenerateHeatmapJob $job,
-        array $rows,
+        iterable $rows,
         array $categories,
         array $columnMap
     ): array {

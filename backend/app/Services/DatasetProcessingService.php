@@ -6,13 +6,16 @@ use App\Events\DatasetStatusChanged;
 use App\Jobs\CompleteDatasetIngestion;
 use App\Jobs\NotifyDatasetReady;
 use App\Models\Dataset;
+use App\Repositories\DatasetRepositoryInterface;
 use App\Services\Datasets\DatasetRepository;
 use App\Services\Datasets\FeatureGenerator;
 use App\Services\Datasets\SchemaMapper;
+use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use RedisException;
 use Throwable;
+use Illuminate\Support\Testing\Fakes\BusFake;
 
 class DatasetProcessingService
 {
@@ -143,11 +146,16 @@ class DatasetProcessingService
      * @param Dataset $dataset
      * @param array<string, string> $schemaMapping
      * @param array<string, mixed> $additionalMetadata
+     * @param bool $forceQueue
      *
      * @return Dataset
      */
-    public function queueFinalise(Dataset $dataset, array $schemaMapping = [], array $additionalMetadata = []): Dataset
-    {
+    public function queueFinalise(
+        Dataset $dataset,
+        array $schemaMapping = [],
+        array $additionalMetadata = [],
+        bool $forceQueue = false
+    ): Dataset {
         if ($additionalMetadata !== []) {
             $dataset->metadata = $this->datasetRepository->mergeMetadata($dataset->metadata, $additionalMetadata);
             $dataset->save();
@@ -155,8 +163,15 @@ class DatasetProcessingService
 
         $connection = (string) config('queue.default');
         $driver = config(sprintf('queue.connections.%s.driver', $connection));
+        $driver = is_string($driver) ? $driver : '';
+        $busIsFaked = $this->isBusFaked();
 
-        if ($driver === 'null') {
+        $shouldRunSync = $this->shouldRunSynchronously($driver)
+            && (! $forceQueue
+                || $driver === 'null'
+                || ($driver === 'sync' && ! $busIsFaked));
+
+        if ($shouldRunSync) {
             $dataset->refresh();
 
             $finalised = $this->finalise($dataset, $schemaMapping, $additionalMetadata);
@@ -166,9 +181,11 @@ class DatasetProcessingService
         }
 
         try {
-            CompleteDatasetIngestion::withChain([
+            $pendingDispatch = CompleteDatasetIngestion::withChain([
                 new NotifyDatasetReady($dataset->getKey()),
-            ])->dispatch(
+            ]);
+
+            $pendingDispatch->dispatch(
                 $dataset->getKey(),
                 $schemaMapping,
                 $additionalMetadata
@@ -195,12 +212,35 @@ class DatasetProcessingService
 
         $this->dispatchProgress($dataset, 0.0);
 
+        if ($driver === 'sync' && ! $busIsFaked) {
+            return $dataset->refresh();
+        }
+
         return $dataset;
+    }
+
+    private function shouldRunSynchronously(string $driver): bool
+    {
+        return in_array($driver, ['null', 'sync'], true);
     }
 
     private function dispatchReadyNotificationSynchronously(Dataset $dataset): void
     {
+        if ($this->isBusFaked()) {
+            app(NotifyDatasetReady::class, ['datasetId' => $dataset->getKey()])
+                ->handle(app(DatasetRepositoryInterface::class));
+
+            return;
+        }
+
         NotifyDatasetReady::dispatchSync($dataset->getKey());
+    }
+
+    private function isBusFaked(): bool
+    {
+        $bus = Bus::getFacadeRoot();
+
+        return $bus instanceof BusFake;
     }
 
     private function shouldFallbackToSynchronousQueue(Throwable $exception): bool

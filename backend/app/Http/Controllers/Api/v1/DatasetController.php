@@ -14,9 +14,10 @@ use App\Models\Dataset;
 use App\Repositories\DatasetRepositoryInterface;
 use App\Services\DatasetAnalysisService;
 use App\Support\InteractsWithPagination;
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\RateLimiter;
 use Symfony\Component\HttpFoundation\Response;
 
 class DatasetController extends BaseController
@@ -111,6 +112,10 @@ class DatasetController extends BaseController
      */
     public function ingest(DatasetIngestRequest $request): JsonResponse
     {
+        if ($response = $this->ensureIngestRateLimit($request)) {
+            return $response;
+        }
+
         $this->authorize('create', Dataset::class);
 
         $dataset = $this->ingestionAction->execute($request);
@@ -123,6 +128,29 @@ class DatasetController extends BaseController
             new DatasetResource($dataset),
             Response::HTTP_CREATED
         );
+    }
+
+    private function ensureIngestRateLimit(DatasetIngestRequest $request): ?JsonResponse
+    {
+        $limit = (int) config('api.ingest_rate_limit', 0);
+
+        if ($limit <= 0) {
+            return null;
+        }
+
+        $identifier = $request->user()?->getAuthIdentifier() ?? $request->ip();
+        $key = sprintf('ingest|%s', $identifier ?? 'guest');
+
+        if (RateLimiter::remaining($key, $limit) <= 0) {
+            return $this->rateLimitResponse(
+                'You have reached the dataset ingestion rate limit. Please wait before trying again.',
+                RateLimiter::availableIn($key)
+            );
+        }
+
+        RateLimiter::hit($key);
+
+        return null;
     }
 
     /**

@@ -70,7 +70,7 @@ class BroadcastDispatcher
         self::$transportUnavailable = true;
         self::$unavailableUntil = time() + self::$resetAfterSeconds;
 
-        Log::warning('Broadcast transport unavailable, suppressing for ' . self::$resetAfterSeconds . ' seconds.', array_merge([
+        Log::warning('Broadcast transport unavailable, suppressing further attempts.', array_merge([
             'event' => $event::class,
             'driver' => config('broadcasting.default'),
             'exception' => $exception->getMessage(),

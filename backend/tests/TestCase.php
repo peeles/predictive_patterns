@@ -6,6 +6,22 @@ use App\Enums\Role;
 use App\Models\User;
 use App\Support\SanctumTokenManager;
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
+use Illuminate\Support\Facades\Facade;
+
+if (! class_exists(\Laravel\Horizon\Facades\Horizon::class)) {
+    /**
+     * @internal minimal facade stub for tests when Horizon is not installed.
+     */
+    class HorizonFacadeStub extends Facade
+    {
+        protected static function getFacadeAccessor(): string
+        {
+            return 'horizon';
+        }
+    }
+
+    class_alias(HorizonFacadeStub::class, \Laravel\Horizon\Facades\Horizon::class);
+}
 
 abstract class TestCase extends BaseTestCase
 {
