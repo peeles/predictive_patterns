@@ -1,6 +1,6 @@
 <?php
 
-namespace Tests\Unit;
+namespace Tests\Unit\Services;
 
 use App\Domain\Models\Events\ModelStatusChanged;
 use App\Enums\ModelStatus;

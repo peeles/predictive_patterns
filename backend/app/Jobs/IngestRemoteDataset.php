@@ -11,6 +11,7 @@ use App\Jobs\Middleware\LogJobExecution;
 use App\Models\Dataset;
 use App\Repositories\DatasetRepositoryInterface;
 use App\Services\DatasetProcessingService;
+use DateTimeInterface;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -48,8 +49,22 @@ class IngestRemoteDataset implements ShouldQueue
     use Queueable;
     use SerializesModels;
 
+    public int $tries = 3;
+    public int $timeout = 900;
+    public int $maxExceptions = 3;
+
     public function __construct(public readonly string $datasetId)
     {
+    }
+
+    public function retryUntil(): DateTimeInterface
+    {
+        return now()->addHours(2);
+    }
+
+    public function backoff(): array
+    {
+        return [60, 300, 900];
     }
 
     /**

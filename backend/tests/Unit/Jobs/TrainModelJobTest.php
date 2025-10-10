@@ -1,6 +1,6 @@
 <?php
 
-namespace Tests\Unit;
+namespace Tests\Unit\Jobs;
 
 use App\Domain\Models\Events\ModelTrained;
 use App\Enums\ModelStatus;
