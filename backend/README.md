@@ -1,6 +1,6 @@
 # Backend (Laravel API)
 
-The backend is a Laravel 10 application responsible for serving predictive risk analytics and orchestrating dataset record ingestion pipelines.
+The backend is a Laravel 12 application running on PHP 8.2. It serves predictive risk analytics, orchestrates dataset record ingestion pipelines, and exposes a Model Context Protocol (MCP) toolset for automation clients.
 
 ## Key features
 
@@ -49,9 +49,38 @@ Run the automated test suite:
 php artisan test
 ```
 
-### Developing without WebSockets
+## Queues and background workers
 
-The broadcasting layer degrades gracefully when the Sockudo (Pusher protocol) server is unavailable. To run the API without a WebSocket broker in development, export the following overrides before starting `php artisan serve`:
+Predictive workloads run across two queues managed by Laravel Horizon:
+
+- **Default queue (`default`)** – handles lightweight API notifications and ingestion events.
+- **Training queue (`training`)** – isolates long-running machine-learning jobs so they do not contend with realtime requests.
+
+Start the supervisors locally with Docker:
+
+```bash
+docker compose up -d redis
+docker compose up -d backend horizon
+docker compose exec backend php artisan horizon
+```
+
+The Horizon dashboard is available at `http://localhost:8000/horizon` and surfaces per-queue wait times, throughput metrics, and job status. Training jobs dispatched via the `ModelJobFactory` automatically target the `training` connection configured in `config/queue.php`.
+
+For manual queue operations, a few helper commands are available:
+
+```bash
+php artisan queue:work               # Process the default queue
+php artisan queue:work training      # Process the training queue connection
+php artisan horizon:terminate        # Gracefully restart Horizon after code changes
+```
+
+See `docs/runbooks/queues.md` for operational guidance, including scaling Horizon supervisors and triaging stalled jobs.
+
+## Realtime broadcasting
+
+Sockudo powers local WebSocket broadcasting by emulating the Pusher protocol. Events are queued onto the `broadcasts` queue connection defined in `config/queue.php`; ensure a Redis-backed queue worker is running to deliver them.
+
+When the WebSocket server is unavailable, broadcasting automatically falls back to the logging driver. You can force this mode during development by exporting:
 
 ```bash
 export BROADCAST_DRIVER=log
@@ -59,7 +88,14 @@ export BROADCAST_FALLBACK_ENABLED=true
 export BROADCAST_FALLBACK_CONNECTION=log
 ```
 
-Events will be written to the application log instead of attempting a WebSocket transport. Check `storage/logs/laravel.log` for the structured fallback entries emitted by `App\Support\Broadcasting\BroadcastDispatcher`.
+Events will be written to `storage/logs/laravel.log`, including metadata emitted by `App\Support\Broadcasting\BroadcastDispatcher`. Check the Sockudo health endpoints to confirm when you are ready to switch back to realtime transport:
+
+```bash
+curl http://localhost:6001/up/predictive-patterns
+curl http://localhost:9601/metrics
+```
+
+Both endpoints should return `200 OK` when Sockudo is healthy.
 
 ### Quality tooling
 
@@ -110,53 +146,59 @@ Authenticated routes require either an `Authorization: Bearer <token>` header is
 
 ## Environment variables
 
+Core runtime settings:
+
 | Variable | Purpose | Default |
 |----------|---------|---------|
+| `APP_ENV` | Application environment (`local`, `staging`, `production`). | `local` |
+| `APP_URL` | Base URL used when generating links. | `http://localhost` |
 | `API_TOKENS` | Comma-separated list of allowed API tokens for authenticating requests. | _(empty)_ |
 | `API_RATE_LIMIT` | Requests per minute allowed for each client IP when using the API. | `60` |
 | `API_RATE_LIMIT_AUTH_LOGIN` | Requests per minute allowed for login attempts per email/IP combination. | `10` |
 | `API_RATE_LIMIT_AUTH_REFRESH` | Requests per minute allowed for refresh attempts per token/IP combination. | `60` |
+
+Dataset ingestion:
+
+| Variable | Purpose | Default |
+|----------|---------|---------|
 | `DATASET_RECORD_INGESTION_TEMP_PATH` | Temporary directory for dataset archive downloads. | `storage_path('app/dataset-record-ingestion')` |
 | `DATASET_RECORD_INGESTION_NOTIFY_MAIL` | Comma-separated list of email recipients for ingestion failure alerts. | _(empty)_ |
 | `DATASET_RECORD_INGESTION_NOTIFY_SLACK_WEBHOOK` | Slack webhook URL for ingestion failure alerts. | _(empty)_ |
 | `DATASET_RECORD_INGESTION_PROGRESS_INTERVAL` | Interval (rows) between ingestion progress log entries. | `5000` |
 | `DATASET_RECORD_INGESTION_CHUNK_SIZE` | Batch size used when inserting dataset records. | `500` |
-| `QUEUE_CONNECTION` | Queue backend for ingestion jobs (`sync`, `database`, etc.). | `sync` |
+
+Queues and Horizon:
+
+| Variable | Purpose | Default |
+|----------|---------|---------|
+| `QUEUE_CONNECTION` | Primary queue backend for the application. | `redis` |
+| `REDIS_QUEUE_CONNECTION` | Redis connection name used for queue workers. | `default` |
+| `REDIS_QUEUE` | Redis list name processed by the default queue worker. | `default` |
+| `REDIS_QUEUE_RETRY_AFTER` | Seconds before a stalled Redis job is retried. | `90` |
+| `TRAINING_QUEUE_DRIVER` | Backend driver used for the dedicated training queue. | Same as `QUEUE_CONNECTION` |
+| `TRAINING_QUEUE_CONNECTION` | Connection name for the training queue. | _(empty)_ |
+| `TRAINING_QUEUE` | Queue name processed by training workers. | `training` |
+| `TRAINING_QUEUE_RETRY_AFTER` | Seconds before a stalled training job is retried. | `1800` |
+| `TRAINING_QUEUE_BLOCK_FOR` | Optional block time (seconds) for long polling on the training queue. | _(empty)_ |
+| `HORIZON_PATH` | URI path that serves the Horizon dashboard. | `horizon` |
+| `HORIZON_TRAINING_MAX_PROCESSES` | Maximum concurrent training worker processes. | `1` |
+| `HORIZON_TRAINING_WAIT` | Minutes a training job may wait before triggering an alert. | `5` |
+
+Broadcasting:
+
+| Variable | Purpose | Default |
+|----------|---------|---------|
 | `BROADCAST_DRIVER` | Primary broadcast driver. Sockudo (Pusher protocol) is used by default. | `pusher` |
-| `BROADCAST_CONNECTION` | _(Legacy)_ Fallback broadcast driver variable supported for backwards compatibility. | `pusher` |
+| `BROADCAST_FALLBACK_ENABLED` | Enables automatic fallback when the primary broadcaster is unavailable. | `true` |
+| `BROADCAST_FALLBACK_CONNECTION` | Driver used when fallback broadcasting is enabled. | `log` |
 | `PUSHER_APP_ID` | Sockudo application identifier used for websocket authentication. | `predictive-patterns` |
 | `PUSHER_APP_KEY` | Public Sockudo key shared with SPA clients. | `local-key` |
 | `PUSHER_APP_SECRET` | Sockudo application secret used to sign broadcast requests. | `local-secret` |
 | `PUSHER_HOST` | Hostname of the Sockudo server. | `localhost` |
 | `PUSHER_PORT` | WebSocket port exposed by Sockudo. | `6001` |
 | `PUSHER_SCHEME` | Protocol used when connecting to Sockudo (`http` or `https`). | `http` |
-| `TRAINING_QUEUE_DRIVER` | Backend driver used for the dedicated training queue. | `redis` |
-| `TRAINING_QUEUE_CONNECTION` | Redis connection name (falls back to `REDIS_QUEUE_CONNECTION`). | Same as `REDIS_QUEUE_CONNECTION` |
-| `TRAINING_QUEUE` | Queue name used by the long-running training worker. | `training` |
-| `TRAINING_QUEUE_RETRY_AFTER` | Seconds before a stalled training job is retried. | `1800` |
 
 Keep secrets such as database credentials and API keys in the `.env` file and never commit them to version control.
-
-## Realtime broadcasting with Sockudo
-
-Sockudo provides the local websocket server that powers event broadcasting. To run the full stack locally:
-
-```bash
-docker compose up -d sockudo
-docker compose up -d backend horizon frontend
-docker compose exec backend php artisan queue:work
-docker compose exec backend php artisan serve
-pnpm --dir ../frontend dev
-```
-
-Once the services are running you can verify the websocket server with:
-
-```bash
-curl http://localhost:6001/up/predictive-patterns
-curl http://localhost:9601/metrics
-```
-
-Both endpoints should return a `200` response when Sockudo is healthy.
 
 ## Runbooks
 
@@ -181,7 +223,7 @@ Long-running model training jobs should be isolated from the default queue so th
 4. When supervising the worker with `supervisord`, set `stopwaitsecs` longer than the slowest training run so the
    process receives enough time to shut down cleanly. An example program stanza looks like:
 
-   ```ini
+    ```ini
    [program:training-worker]
    command=php /var/www/html/artisan queue:work training --timeout=1740 --memory=1024
    stopwaitsecs=1900
