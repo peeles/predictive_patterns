@@ -5,6 +5,7 @@ namespace Tests\Unit\Jobs;
 use App\Domain\Models\Events\ModelTrained;
 use App\Enums\ModelStatus;
 use App\Enums\TrainingStatus;
+use App\Jobs\Middleware\NotifyWebhook;
 use App\Jobs\TrainModelJob;
 use App\Models\Dataset;
 use App\Models\PredictiveModel;
@@ -15,6 +16,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Redis;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use RuntimeException;
 use Tests\TestCase;
 
@@ -196,6 +198,18 @@ class TrainModelJobTest extends TestCase
         $this->assertEquals(ModelStatus::Failed, $model->status);
         $this->assertNotNull($run->error_message);
         $this->assertNotNull($run->finished_at);
+    }
+
+    public function test_middleware_includes_notify_webhook(): void
+    {
+        $job = new TrainModelJob(Str::uuid()->toString(), null, 'https://example.test/webhooks/training');
+
+        $middleware = $job->middleware();
+
+        $this->assertTrue(
+            collect($middleware)->contains(fn ($instance): bool => $instance instanceof NotifyWebhook),
+        );
+        $this->assertSame('https://example.test/webhooks/training', $job->getWebhookUrl());
     }
 
     private function datasetCsv(): string

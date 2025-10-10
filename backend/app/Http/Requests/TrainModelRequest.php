@@ -27,6 +27,7 @@ class TrainModelRequest extends FormRequest
             'model_id' => ['required', 'uuid', Rule::exists('models', 'id')],
             'hyperparameters' => ['nullable', 'array'],
             'metadata' => ['sometimes', 'array'],
+            'webhook_url' => ['sometimes', 'nullable', 'url', 'max:2048'],
         ];
     }
 

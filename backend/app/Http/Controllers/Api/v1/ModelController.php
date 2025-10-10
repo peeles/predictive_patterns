@@ -348,7 +348,11 @@ class ModelController extends BaseController
 
         $statusService->markQueued($model->id, 'training');
 
-        $dispatch = TrainModelJob::dispatch($run->id, $hyperparameters ?: null);
+        $dispatch = TrainModelJob::dispatch(
+            $run->id,
+            $hyperparameters ?: null,
+            $validated['webhook_url'] ?? null,
+        );
 
         $responsePayload = [
             'message' => 'Training job queued',

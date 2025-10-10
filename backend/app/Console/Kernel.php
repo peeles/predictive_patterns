@@ -21,10 +21,12 @@ class Kernel extends ConsoleKernel
 
         // Queue health monitoring
         $schedule->job(new \App\Jobs\QueueHealthCheck())->everyFiveMinutes();
+        $schedule->command('metrics:export-queue')->everyFiveMinutes();
 
         // Prune old jobs
         $schedule->command('queue:prune-failed --hours=168')->daily(); // Keep 7 days
         $schedule->command('queue:prune-batches --hours=168')->daily();
+        $schedule->command('model:prune')->daily();
 
         // Horizon snapshots
         $schedule->command('horizon:snapshot')->everyFiveMinutes();

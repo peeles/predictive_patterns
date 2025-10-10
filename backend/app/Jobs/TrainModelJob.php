@@ -6,11 +6,13 @@ use App\Domain\Models\Events\ModelTrained;
 use App\Enums\ModelStatus;
 use App\Enums\TrainingStatus;
 use App\Jobs\Middleware\LogJobExecution;
+use App\Jobs\Middleware\NotifyWebhook;
 use App\Models\TrainingRun;
 use App\Services\ModelStatusService;
 use App\Services\ModelTrainingService;
 use DateTimeInterface;
 use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\Job as QueueJobContract;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -42,7 +44,8 @@ class TrainModelJob implements ShouldQueue, ShouldBeUnique
      */
     public function __construct(
         private readonly string $trainingRunId,
-        private readonly ?array $hyperparameters = null
+        private readonly ?array $hyperparameters = null,
+        private readonly ?string $webhookUrl = null,
     ) {
         $this->onConnection(self::CONNECTION);
         $this->onQueue(self::QUEUE);
@@ -66,7 +69,13 @@ class TrainModelJob implements ShouldQueue, ShouldBeUnique
         return [
             new LogJobExecution(),
             new RateLimited('default'),
+            new NotifyWebhook(),
         ];
+    }
+
+    public function getWebhookUrl(): ?string
+    {
+        return $this->webhookUrl;
     }
 
     public function uniqueId(): string
@@ -80,6 +89,8 @@ class TrainModelJob implements ShouldQueue, ShouldBeUnique
      */
     public function handle(ModelTrainingService $trainingService, ModelStatusService $statusService): void
     {
+        $this->recordQueueProgress(0.0);
+
         $run = TrainingRun::query()->with('model')->findOrFail($this->trainingRunId);
         $model = $run->model;
 
@@ -100,6 +111,7 @@ class TrainModelJob implements ShouldQueue, ShouldBeUnique
         ])->save();
 
         $statusService->markProgress($model->id, 'training', 5.0, 'Preparing training run');
+        $this->recordQueueProgress(5.0);
 
         try {
             $result = $trainingService->train(
@@ -108,10 +120,12 @@ class TrainModelJob implements ShouldQueue, ShouldBeUnique
                 $this->hyperparameters ?? $run->hyperparameters ?? [],
                 function (float $progress, ?string $message = null) use ($statusService, $model): void {
                     $statusService->markProgress($model->id, 'training', $progress, $message);
+                    $this->recordQueueProgress($progress);
                 }
             );
 
             $statusService->markProgress($model->id, 'training', 95.0, 'Finalizing training results');
+            $this->recordQueueProgress(95.0);
             $metrics = $result['metrics'];
             $metadata = array_merge($model->metadata ?? [], $result['metadata']);
 
@@ -135,6 +149,7 @@ class TrainModelJob implements ShouldQueue, ShouldBeUnique
             $model->refresh();
 
             event(new ModelTrained($model));
+            $this->recordQueueProgress(100.0);
         } catch (Throwable $exception) {
             $run->fill([
                 'status' => TrainingStatus::Failed,
@@ -157,6 +172,8 @@ class TrainModelJob implements ShouldQueue, ShouldBeUnique
 
             $statusService->markFailed($model->id, $exception->getMessage());
 
+            $this->recordQueueProgress(100.0);
+
             throw $exception;
         }
     }
@@ -167,5 +184,29 @@ class TrainModelJob implements ShouldQueue, ShouldBeUnique
             'training_run_id' => $this->trainingRunId,
             'exception' => $exception->getMessage(),
         ]);
+    }
+
+    private function recordQueueProgress(float $progress): void
+    {
+        if (! property_exists($this, 'job')) {
+            return;
+        }
+
+        $job = $this->job;
+
+        if (! $job instanceof QueueJobContract) {
+            return;
+        }
+
+        if (method_exists($job, 'supportsProgressTracking') && ! $job->supportsProgressTracking()) {
+            return;
+        }
+
+        if (method_exists($job, 'setProgress')) {
+            $normalized = (int) round($progress);
+            $normalized = max(0, min(100, $normalized));
+
+            $job->setProgress($normalized);
+        }
     }
 }
