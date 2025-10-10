@@ -22,6 +22,7 @@ use Illuminate\Queue\Middleware\RateLimited;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\LazyCollection;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
 use JsonException;
@@ -89,16 +90,21 @@ class GenerateHeatmapJob implements ShouldQueue
                 $datasetContext['column_map']
             );
             $filtered = $this->filterEntries($entries, $this->parameters);
-
-            if ($filtered === []) {
-                $filtered = $entries;
-            }
-
-            if ($filtered === []) {
-                throw new RuntimeException('No usable dataset rows found for prediction.');
-            }
-
             $scored = $this->scoreEntries($filtered, $artifact, $classifier, $preprocessing);
+
+            if ($scored === []) {
+                $fallbackEntries = $this->prepareEntries(
+                    $this->loadDatasetRows($prediction, $datasetContext['column_map'])['rows'],
+                    $artifact['categories'],
+                    $datasetContext['column_map']
+                );
+
+                $scored = $this->scoreEntries($fallbackEntries, $artifact, $classifier, $preprocessing);
+
+                if ($scored === []) {
+                    throw new RuntimeException('No usable dataset rows found for prediction.');
+                }
+            }
 
             $this->broadcastStatus(
                 $prediction,
@@ -358,11 +364,11 @@ class GenerateHeatmapJob implements ShouldQueue
 
     /**
      * @return array{
-     *     rows: array<int, array<string, string|null>>,
+     *     rows: LazyCollection<int, array<string, string|null>>,
      *     column_map: array<string, string>
      * }
      */
-    private function loadDatasetRows(Prediction $prediction): array
+    private function loadDatasetRows(Prediction $prediction, ?array $columnMap = null): array
     {
         $dataset = $prediction->dataset ?? $prediction->model?->dataset;
 
@@ -381,66 +387,67 @@ class GenerateHeatmapJob implements ShouldQueue
         }
 
         $path = $disk->path($dataset->file_path);
-        $handle = fopen($path, 'rb');
+        $columnMap ??= $this->resolveColumnMap($dataset);
 
-        if ($handle === false) {
-            throw new RuntimeException(sprintf('Unable to open dataset file "%s".', $path));
-        }
+        $rows = LazyCollection::make(function () use ($path) {
+            $handle = fopen($path, 'rb');
 
-        $columnMap = $this->resolveColumnMap($dataset);
-
-        try {
-            $rows = [];
-            $header = null;
-
-            while (($data = fgetcsv($handle)) !== false) {
-                if ($header === null) {
-                    $header = [];
-
-                    foreach ($data as $index => $value) {
-                        $value = is_string($value) ? $value : (string) $value;
-                        $normalized = $this->normalizeColumnName($value);
-
-                        if ($normalized === '') {
-                            $normalized = $this->normalizeColumnName('column_' . $index);
-                        }
-
-                        $header[$index] = $normalized !== '' ? $normalized : 'column_' . $index;
-                    }
-
-                    continue;
-                }
-
-                if ($data === [null] || $data === false) {
-                    continue;
-                }
-
-                $row = [];
-
-                foreach ($header as $index => $column) {
-                    $row[$column] = $data[$index] ?? null;
-                }
-
-                $rows[] = $row;
+            if ($handle === false) {
+                throw new RuntimeException(sprintf('Unable to open dataset file "%s".', $path));
             }
 
-            return [
-                'rows' => $rows,
-                'column_map' => $columnMap,
-            ];
-        } finally {
-            fclose($handle);
-        }
+            try {
+                $header = null;
+
+                while (($data = fgetcsv($handle)) !== false) {
+                    if ($header === null) {
+                        $header = [];
+
+                        foreach ($data as $index => $value) {
+                            $value = is_string($value) ? $value : (string) $value;
+                            $normalized = $this->normalizeColumnName($value);
+
+                            if ($normalized === '') {
+                                $normalized = $this->normalizeColumnName('column_' . $index);
+                            }
+
+                            $header[$index] = $normalized !== '' ? $normalized : 'column_' . $index;
+                        }
+
+                        continue;
+                    }
+
+                    if ($data === [null] || $data === false) {
+                        continue;
+                    }
+
+                    $row = [];
+
+                    foreach ($header as $index => $column) {
+                        $row[$column] = $data[$index] ?? null;
+                    }
+
+                    yield $row;
+                }
+            } finally {
+                fclose($handle);
+            }
+        });
+
+        return [
+            'rows' => $rows,
+            'column_map' => $columnMap,
+        ];
     }
 
     /**
+     * @param LazyCollection<int, array<string, mixed>> $rows
      * @param list<string> $artifactCategories
      *
-     * @return list<array{timestamp: CarbonImmutable, latitude: float, longitude: float, category: string, features: list<float>}>
+     * @return LazyCollection<int, array{timestamp: CarbonImmutable, latitude: float, longitude: float, category: string, features: list<float>}>
      */
-    private function prepareEntries(array $rows, array $artifactCategories, array $columnMap): array
+    private function prepareEntries(LazyCollection $rows, array $artifactCategories, array $columnMap): LazyCollection
     {
-        $entries = [];
         $categories = array_values(array_map(static fn ($value) => (string) $value, $artifactCategories));
 
         $timestampColumn = $columnMap['timestamp'] ?? 'timestamp';
@@ -449,45 +456,53 @@ class GenerateHeatmapJob implements ShouldQueue
         $categoryColumn = $columnMap['category'] ?? 'category';
         $riskColumn = $columnMap['risk_score'] ?? 'risk_score';
 
-        foreach ($rows as $row) {
-            $timestampString = (string) ($row[$timestampColumn] ?? '');
+        return $rows
+            ->map(function (array $row) use (
+                $timestampColumn,
+                $latitudeColumn,
+                $longitudeColumn,
+                $categoryColumn,
+                $riskColumn,
+                $categories
+            ) {
+                $timestampString = (string) ($row[$timestampColumn] ?? '');
 
-            if ($timestampString === '') {
-                continue;
-            }
+                if ($timestampString === '') {
+                    return null;
+                }
 
-            $timestamp = TimestampParser::parse($timestampString);
+                $timestamp = TimestampParser::parse($timestampString);
 
-            if (! $timestamp instanceof CarbonImmutable) {
-                continue;
-            }
+                if (! $timestamp instanceof CarbonImmutable) {
+                    return null;
+                }
 
-            $latitude = (float) ($row[$latitudeColumn] ?? $row['lat'] ?? $row['latitude'] ?? 0.0);
-            $longitude = (float) ($row[$longitudeColumn] ?? $row['lng'] ?? $row['longitude'] ?? 0.0);
-            $riskScoreValue = $row[$riskColumn] ?? $row['risk_score'] ?? $row['risk'] ?? null;
-            $riskScore = is_numeric($riskScoreValue) ? (float) $riskScoreValue : 0.0;
-            $categoryValue = $row[$categoryColumn] ?? $row['category'] ?? '';
-            $category = is_string($categoryValue) ? trim($categoryValue) : (string) $categoryValue;
+                $latitude = (float) ($row[$latitudeColumn] ?? $row['lat'] ?? $row['latitude'] ?? 0.0);
+                $longitude = (float) ($row[$longitudeColumn] ?? $row['lng'] ?? $row['longitude'] ?? 0.0);
+                $riskScoreValue = $row[$riskColumn] ?? $row['risk_score'] ?? $row['risk'] ?? null;
+                $riskScore = is_numeric($riskScoreValue) ? (float) $riskScoreValue : 0.0;
+                $categoryValue = $row[$categoryColumn] ?? $row['category'] ?? '';
+                $category = is_string($categoryValue) ? trim($categoryValue) : (string) $categoryValue;
 
-            $hour = $timestamp->hour / 23.0;
-            $dayOfWeek = ($timestamp->dayOfWeekIso - 1) / 6.0;
+                $hour = $timestamp->hour / 23.0;
+                $dayOfWeek = ($timestamp->dayOfWeekIso - 1) / 6.0;
 
-            $features = [$hour, $dayOfWeek, $latitude, $longitude, $riskScore];
+                $features = [$hour, $dayOfWeek, $latitude, $longitude, $riskScore];
 
-            foreach ($categories as $expectedCategory) {
-                $features[] = $expectedCategory === $category ? 1.0 : 0.0;
-            }
+                foreach ($categories as $expectedCategory) {
+                    $features[] = $expectedCategory === $category ? 1.0 : 0.0;
+                }
 
-            $entries[] = [
-                'timestamp' => $timestamp,
-                'latitude' => $latitude,
-                'longitude' => $longitude,
-                'category' => $category,
-                'features' => $features,
-            ];
-        }
-
-        return $entries;
+                return [
+                    'timestamp' => $timestamp,
+                    'latitude' => $latitude,
+                    'longitude' => $longitude,
+                    'category' => $category,
+                    'features' => $features,
+                ];
+            })
+            ->filter(static fn ($entry): bool => $entry !== null)
+            ->values();
     }
 
     /**
@@ -548,12 +563,12 @@ class GenerateHeatmapJob implements ShouldQueue
     }
 
     /**
-     * @param list<array{timestamp: CarbonImmutable, latitude: float, longitude: float, category: string, features: list<float>}> $entries
+     * @param LazyCollection<int, array{timestamp: CarbonImmutable, latitude: float, longitude: float, category: string, features: list<float>}> $entries
      * @param array<string, mixed> $parameters
      *
-     * @return list<array{timestamp: CarbonImmutable, latitude: float, longitude: float, category: string, features: list<float>}>
+     * @return LazyCollection<int, array{timestamp: CarbonImmutable, latitude: float, longitude: float, category: string, features: list<float>}>
      */
-    private function filterEntries(array $entries, array $parameters): array
+    private function filterEntries(LazyCollection $entries, array $parameters): LazyCollection
     {
         $center = $this->resolveCenter($parameters['center'] ?? null);
         $radiusKm = $this->resolveFloat($parameters['radius_km'] ?? $parameters['radiusKm'] ?? null);
@@ -580,99 +595,105 @@ class GenerateHeatmapJob implements ShouldQueue
             }
         }
 
-        $filtered = [];
+        return $entries
+            ->filter(function (array $entry) use ($center, $radiusKm, $start, $end): bool {
+                if ($center !== null && $radiusKm !== null) {
+                    $distance = $this->haversine($center['lat'], $center['lng'], $entry['latitude'], $entry['longitude']);
 
-        foreach ($entries as $entry) {
-            if ($center !== null && $radiusKm !== null) {
-                $distance = $this->haversine($center['lat'], $center['lng'], $entry['latitude'], $entry['longitude']);
-
-                if ($distance > $radiusKm) {
-                    continue;
+                    if ($distance > $radiusKm) {
+                        return false;
+                    }
                 }
-            }
 
-            if ($start !== null && $end !== null) {
-                if ($entry['timestamp']->lt($start) || $entry['timestamp']->gt($end)) {
-                    continue;
+                if ($start !== null && $end !== null) {
+                    if ($entry['timestamp']->lt($start) || $entry['timestamp']->gt($end)) {
+                        return false;
+                    }
+                } elseif ($end !== null && $entry['timestamp']->gt($end)) {
+                    return false;
                 }
-            } elseif ($end !== null && $entry['timestamp']->gt($end)) {
-                continue;
-            }
 
-            $filtered[] = $entry;
-        }
-
-        return $filtered;
+                return true;
+            })
+            ->values();
     }
 
     /**
-     * @param list<array{timestamp: CarbonImmutable, latitude: float, longitude: float, category: string, features: list<float>}> $entries
+     * @param LazyCollection<int, array{timestamp: CarbonImmutable, latitude: float, longitude: float, category: string, features: list<float>}> $entries
      * @param array<string, mixed> $artifact
      *
      * @return list<array{timestamp: CarbonImmutable, latitude: float, longitude: float, category: string, score: float}>
      */
     private function scoreEntries(
-        array $entries,
+        LazyCollection $entries,
         array $artifact,
         object $classifier,
         array $context
     ): array {
-        if ($entries === []) {
-            return [];
-        }
-
         $means = $context['means'];
         $stdDevs = $context['std_devs'];
         $normalizer = $context['normalizer'];
         $imputer = $context['imputer'];
 
-        $samples = [];
-        $metadata = [];
+        return $entries
+            ->chunk(1000)
+            ->flatMap(function ($chunk) use ($imputer, $means, $stdDevs, $normalizer, $classifier) {
+                $chunkEntries = $chunk instanceof LazyCollection ? $chunk->all() : (array) $chunk;
 
-        foreach ($entries as $entry) {
-            $samples[] = array_map('floatval', $entry['features']);
-            $metadata[] = [
-                'timestamp' => $entry['timestamp'],
-                'latitude' => $entry['latitude'],
-                'longitude' => $entry['longitude'],
-                'category' => $entry['category'],
-            ];
-        }
+                if ($chunkEntries === []) {
+                    return [];
+                }
 
-        $imputer->transform($samples);
+                $samples = [];
+                $metadata = [];
 
-        $standardized = [];
+                foreach ($chunkEntries as $entry) {
+                    $samples[] = array_map('floatval', $entry['features']);
+                    $metadata[] = [
+                        'timestamp' => $entry['timestamp'],
+                        'latitude' => $entry['latitude'],
+                        'longitude' => $entry['longitude'],
+                        'category' => $entry['category'],
+                    ];
+                }
 
-        foreach ($samples as $sample) {
-            $standardized[] = $this->normalizeRow($sample, $means, $stdDevs);
-        }
+                $imputer->transform($samples);
 
-        $normalizer->transform($standardized);
+                $standardized = [];
 
-        if (method_exists($classifier, 'predictProbabilities')) {
-            $probabilities = ProbabilityScoreExtractor::extractList((array) $classifier->predictProbabilities($standardized));
-        } else {
-            $predictions = $classifier->predict($standardized);
-            $probabilities = ProbabilityScoreExtractor::extractList(
-                array_map(static fn (int $value): float => $value >= 1 ? 1.0 : 0.0, $predictions)
-            );
-        }
+                foreach ($samples as $sample) {
+                    $standardized[] = $this->normalizeRow($sample, $means, $stdDevs);
+                }
 
-        $scored = [];
+                $normalizer->transform($standardized);
 
-        foreach ($metadata as $index => $meta) {
-            $score = $probabilities[$index] ?? 0.0;
+                if (method_exists($classifier, 'predictProbabilities')) {
+                    $probabilities = ProbabilityScoreExtractor::extractList((array) $classifier->predictProbabilities($standardized));
+                } else {
+                    $predictions = $classifier->predict($standardized);
+                    $probabilities = ProbabilityScoreExtractor::extractList(
+                        array_map(static fn (int $value): float => $value >= 1 ? 1.0 : 0.0, $predictions)
+                    );
+                }
 
-            $scored[] = [
-                'timestamp' => $meta['timestamp'],
-                'latitude' => $meta['latitude'],
-                'longitude' => $meta['longitude'],
-                'category' => $meta['category'],
-                'score' => max(0.0, min(1.0, $score)),
-            ];
-        }
+                $scored = [];
 
-        return $scored;
+                foreach ($metadata as $index => $meta) {
+                    $score = $probabilities[$index] ?? 0.0;
+
+                    $scored[] = [
+                        'timestamp' => $meta['timestamp'],
+                        'latitude' => $meta['latitude'],
+                        'longitude' => $meta['longitude'],
+                        'category' => $meta['category'],
+                        'score' => max(0.0, min(1.0, $score)),
+                    ];
+                }
+
+                return $scored;
+            })
+            ->values()
+            ->all();
     }
 
     /**

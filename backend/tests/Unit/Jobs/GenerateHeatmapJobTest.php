@@ -18,6 +18,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\LazyCollection;
 use InvalidArgumentException;
 use JsonException;
 use Phpml\Exception\FileException;
@@ -380,8 +381,12 @@ class GenerateHeatmapJobTest extends TestCase
         $method = new ReflectionMethod(GenerateHeatmapJob::class, 'prepareEntries');
         $method->setAccessible(true);
 
-        /** @var list<array{timestamp: CarbonImmutable, latitude: float, longitude: float, category: string, features: list<float>}> $entries */
+        /** @var LazyCollection<int, array{timestamp: CarbonImmutable, latitude: float, longitude: float, category: string, features: list<float>}>|list<array{timestamp: CarbonImmutable, latitude: float, longitude: float, category: string, features: list<float>}> $entries */
         $entries = $method->invoke($job, $rows, $categories, $columnMap);
+
+        if ($entries instanceof LazyCollection) {
+            $entries = $entries->values()->all();
+        }
 
         return $entries;
     }

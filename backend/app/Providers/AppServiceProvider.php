@@ -12,9 +12,12 @@ use App\Repositories\Eloquent\EloquentPredictiveModelRepository;
 use App\Support\ResolvesRoles;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Support\Facades\App;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Str;
 use Random\RandomException;
@@ -43,7 +46,28 @@ class AppServiceProvider extends ServiceProvider
     {
         $this->useEphemeralCacheDuringDatabaseCommands();
         $this->configureRateLimiting();
+        $this->registerSlowQueryLogger();
         Dataset::observe(DatasetObserver::class);
+    }
+
+    private function registerSlowQueryLogger(): void
+    {
+        if (! $this->app->runningInConsole()) {
+            return;
+        }
+
+        DB::listen(function (QueryExecuted $query): void {
+            if ($query->time <= 1000) {
+                return;
+            }
+
+            Log::warning('Slow query detected', [
+                'sql' => $query->sql,
+                'time_ms' => $query->time,
+                'connection' => $query->connectionName,
+                'bindings' => $query->bindings,
+            ]);
+        });
     }
 
     /**
