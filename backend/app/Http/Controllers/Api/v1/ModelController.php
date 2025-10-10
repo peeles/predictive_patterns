@@ -11,8 +11,7 @@ use App\Http\Requests\TrainModelRequest;
 use App\Enums\TrainingStatus;
 use App\Http\Resources\ModelCollection;
 use App\Http\Resources\ModelResource;
-use App\Jobs\EvaluateModelJob;
-use App\Jobs\TrainModelJob;
+use App\Jobs\Factories\ModelJobFactory;
 use App\Models\PredictiveModel;
 use App\Repositories\PredictiveModelRepositoryInterface;
 use App\Models\TrainingRun;
@@ -348,12 +347,14 @@ class ModelController extends BaseController
 
         $statusService->markQueued($model->id, 'training');
 
-        $dispatch = TrainModelJob::dispatch(
+        $job = ModelJobFactory::training(
             $run->id,
             $hyperparameters ?: null,
             $validated['webhook_url'] ?? null,
             $initiatedBy,
         );
+
+        $dispatch = dispatch($job);
 
         $responsePayload = [
             'message' => 'Training job queued',
@@ -404,12 +405,14 @@ class ModelController extends BaseController
 
         $statusService->markQueued($model->id, 'evaluating');
 
-        $dispatch = EvaluateModelJob::dispatch(
+        $job = ModelJobFactory::evaluation(
             $model->id,
             $validated['dataset_id'] ?? null,
             $metrics === [] ? null : $metrics,
             $validated['notes'] ?? null,
         );
+
+        $dispatch = dispatch($job);
 
         $responsePayload = [
             'message' => 'Evaluation queued',
