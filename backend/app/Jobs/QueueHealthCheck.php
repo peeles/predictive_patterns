@@ -33,26 +33,41 @@ class QueueHealthCheck implements ShouldQueue
 
     public function handle(): void
     {
+        $queues = [
+            'default' => $this->gatherMetricsForQueue('default'),
+            'training' => $this->gatherMetricsForQueue('training'),
+            'broadcasts' => $this->gatherMetricsForQueue('broadcasts'),
+        ];
+
         $metrics = [
-            'default_queue_size' => Redis::llen('queues:default'),
-            'training_queue_size' => Redis::llen('queues:training'),
-            'broadcasts_queue_size' => Redis::llen('queues:broadcasts'),
+            'queues' => $queues,
             'failed_jobs' => DB::table('failed_jobs')->count(),
         ];
 
-        // Alert if queue backlog is too high
-        if ($metrics['default_queue_size'] > 1000) {
-            Log::warning('High queue backlog detected', $metrics);
+        if ($queues['default']['queued'] > 1_000) {
+            Log::warning('High default queue backlog detected', $metrics);
         }
 
-        if ($metrics['training_queue_size'] > 10) {
-            Log::warning('Training queue backlog detected', $metrics);
+        if ($queues['training']['queued'] > 100 || $queues['training']['processing'] > 50) {
+            Log::warning('High training queue utilization detected', $metrics);
         }
 
         if ($metrics['failed_jobs'] > 100) {
-            Log::error('High number of failed jobs', $metrics);
+            Log::error('High number of failed jobs detected', $metrics);
         }
 
-        Log::info('Queue health check', $metrics);
+        Log::info('Queue health check metrics collected', $metrics);
+    }
+
+    /**
+     * @return array{queued:int, processing:int, delayed:int}
+     */
+    private function gatherMetricsForQueue(string $queue): array
+    {
+        return [
+            'queued' => (int) Redis::llen("queues:{$queue}"),
+            'processing' => (int) Redis::zcard("queues:{$queue}:reserved"),
+            'delayed' => (int) Redis::zcard("queues:{$queue}:delayed"),
+        ];
     }
 }

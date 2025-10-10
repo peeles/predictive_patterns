@@ -97,16 +97,20 @@ class ModelApiTest extends TestCase
         $model = PredictiveModel::factory()->create();
         $tokens = $this->issueTokensForRole(Role::Admin);
 
+        $webhookUrl = 'https://example.test/webhooks/model-training';
+
         $response = $this->withHeader('Authorization', 'Bearer '.$tokens['accessToken'])->postJson('/api/v1/models/train', [
             'model_id' => $model->id,
             'hyperparameters' => ['learning_rate' => 0.2],
+            'webhook_url' => $webhookUrl,
         ]);
 
         $response->assertAccepted();
 
-        Bus::assertDispatched(TrainModelJob::class, function (TrainModelJob $job): bool {
+        Bus::assertDispatched(TrainModelJob::class, function (TrainModelJob $job) use ($webhookUrl): bool {
             return $job->connection === 'training'
-                && $job->queue === config('queue.connections.training.queue', 'training');
+                && $job->queue === config('queue.connections.training.queue', 'training')
+                && $job->getWebhookUrl() === $webhookUrl;
         });
 
         Event::assertDispatched(ModelStatusUpdated::class, function (ModelStatusUpdated $event) use ($model): bool {
