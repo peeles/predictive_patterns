@@ -8,9 +8,17 @@ use Illuminate\Database\Eloquent\Builder;
 
 class EloquentDatasetRepository implements DatasetRepositoryInterface
 {
+    /**
+     * @var list<string>
+     */
+    private const DEFAULT_RELATIONS = [
+        'creator',
+        'models',
+    ];
+
     public function query(): Builder
     {
-        return Dataset::query();
+        return Dataset::query()->with(self::DEFAULT_RELATIONS);
     }
 
     public function find(string $id): ?Dataset

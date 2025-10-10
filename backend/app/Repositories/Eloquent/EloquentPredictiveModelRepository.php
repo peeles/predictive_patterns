@@ -8,9 +8,17 @@ use Illuminate\Database\Eloquent\Builder;
 
 class EloquentPredictiveModelRepository implements PredictiveModelRepositoryInterface
 {
+    /**
+     * @var list<string>
+     */
+    private const DEFAULT_RELATIONS = [
+        'dataset',
+        'creator',
+    ];
+
     public function query(): Builder
     {
-        return PredictiveModel::query();
+        return PredictiveModel::query()->with(self::DEFAULT_RELATIONS);
     }
 
     public function find(string $id): ?PredictiveModel
