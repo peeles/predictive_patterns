@@ -7,36 +7,37 @@ use Illuminate\Support\Facades\Cache;
 
 trait TracksProgress
 {
+    private array $lastBroadcasts = [];
+
     protected function updateProgress(
         string $entityId,
         string $stage,
         float $percent,
         ?string $message = null
     ): void {
-        $normalizedPercent = max(0.0, min(100.0, round($percent, 2)));
+        $normalisedPercent = max(0.0, min(100.0, round($percent, 2)));
 
         Cache::put(
             "progress.{$entityId}.{$stage}",
             [
-                'percent' => $normalizedPercent,
+                'percent' => $normalisedPercent,
                 'message' => $message,
                 'updated_at' => now()->toIso8601String(),
             ],
-            600 // 10 minutes
+            600
         );
 
-        // Broadcast if significant change
-        if ($this->shouldBroadcastProgress($normalizedPercent)) {
-            broadcast(new ProgressUpdated($entityId, $stage, $normalizedPercent, $message));
+        if ($this->shouldBroadcastProgress($entityId, $normalisedPercent)) {
+            broadcast(new ProgressUpdated($entityId, $stage, $normalisedPercent, $message));
         }
     }
 
-    private function shouldBroadcastProgress(float $newPercent): bool
+    private function shouldBroadcastProgress(string $entityId, float $newPercent): bool
     {
-        static $lastBroadcast = null;
+        $last = $this->lastBroadcasts[$entityId] ?? null;
 
-        if ($lastBroadcast === null || abs($newPercent - $lastBroadcast) >= 5.0) {
-            $lastBroadcast = $newPercent;
+        if ($last === null || abs($newPercent - $last) >= 5.0) {
+            $this->lastBroadcasts[$entityId] = $newPercent;
             return true;
         }
 
