@@ -31,6 +31,20 @@ class DatasetStatusUpdated implements ShouldBroadcast
     ) {
     }
 
+    public static function fromStatusChange(DatasetStatusChanged $event, ?float $progress = null): self
+    {
+        $updatedAt = $event->updatedAt ?? now()->toIso8601String();
+
+        return new self(
+            $event->datasetId,
+            $event->status,
+            $progress ?? $event->progress,
+            $updatedAt,
+            $event->ingestedAt,
+            $event->message,
+        );
+    }
+
     public static function fromDataset(Dataset $dataset, ?float $progress = null, ?string $message = null): self
     {
         $status = $dataset->status instanceof DatasetStatus

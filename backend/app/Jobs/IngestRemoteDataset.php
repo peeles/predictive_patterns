@@ -2,10 +2,7 @@
 
 namespace App\Jobs;
 
-use App\Events\Datasets\DatasetIngestionFailed;
-use App\Events\Datasets\DatasetIngestionProgressed;
-use App\Events\Datasets\DatasetIngestionStarted;
-use App\Events\DatasetStatusUpdated;
+use App\Events\DatasetStatusChanged;
 use App\Enums\DatasetStatus;
 use App\Jobs\Middleware\LogJobExecution;
 use App\Models\Dataset;
@@ -23,7 +20,6 @@ use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Testing\Fakes\EventFake;
 use Illuminate\Support\Str;
 use RuntimeException;
 use Throwable;
@@ -101,10 +97,7 @@ class IngestRemoteDataset implements ShouldQueue
         $dataset->status = DatasetStatus::Processing;
         $dataset->save();
 
-        event(new DatasetIngestionStarted($dataset, 0.0));
-        $this->dispatchStatusUpdateIfEventsFaked($dataset, 0.0);
-        event(new DatasetIngestionProgressed($dataset, 0.0));
-        $this->dispatchStatusUpdateIfEventsFaked($dataset, 0.0);
+        event(DatasetStatusChanged::fromDataset($dataset, 0.0));
 
         $disk = Storage::disk('local');
         $path = null;
@@ -182,8 +175,7 @@ class IngestRemoteDataset implements ShouldQueue
             ]);
             $dataset->save();
 
-            event(new DatasetIngestionFailed($dataset, $exception->getMessage()));
-            $this->dispatchStatusUpdateIfEventsFaked($dataset, 0.0, $exception->getMessage());
+            event(DatasetStatusChanged::fromDataset($dataset, 0.0, $exception->getMessage()));
 
             throw $exception;
         } finally {
@@ -258,31 +250,4 @@ class IngestRemoteDataset implements ShouldQueue
         return $mime !== '' ? strtolower($mime) : null;
     }
 
-    private function dispatchStatusUpdateIfEventsFaked(
-        Dataset $dataset,
-        ?float $progress,
-        ?string $message = null
-    ): void {
-        $dispatcher = app('events');
-
-        if (! $dispatcher instanceof EventFake) {
-            return;
-        }
-
-        $normalized = $this->normalizeProgress($progress);
-        event(DatasetStatusUpdated::fromDataset($dataset, $normalized, $message));
-    }
-
-    private function normalizeProgress(?float $progress): ?float
-    {
-        if ($progress === null) {
-            return null;
-        }
-
-        if (is_nan($progress) || is_infinite($progress)) {
-            return null;
-        }
-
-        return max(0.0, min(1.0, round($progress, 4)));
-    }
 }
