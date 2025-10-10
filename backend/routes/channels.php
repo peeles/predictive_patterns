@@ -5,17 +5,28 @@ use App\Models\Dataset;
 use App\Models\Prediction;
 use App\Models\PredictiveModel;
 use Illuminate\Support\Facades\Broadcast;
+use Illuminate\Support\Facades\Cache;
 
 Broadcast::routes(['middleware' => ['auth:sanctum']]);
 
 Broadcast::channel('models.{modelId}.status', function ($user, string $modelId): bool {
-    $model = PredictiveModel::find($modelId);
+    $isAuthorized = Cache::remember(
+        "auth.model.{$modelId}.user.{$user->id}",
+        300,
+        static function () use ($user, $modelId): bool {
+            $model = PredictiveModel::find($modelId);
 
-    if (! $model instanceof PredictiveModel) {
-        return false;
-    }
+            if (! $model instanceof PredictiveModel) {
+                return false;
+            }
 
-    return $user->can('view', $model);
+            return $user->can('view', $model);
+        }
+    );
+
+    usleep(random_int(1000, 5000));
+
+    return $isAuthorized;
 });
 
 Broadcast::channel('datasets.{datasetId}.status', function ($user, string $datasetId): bool {

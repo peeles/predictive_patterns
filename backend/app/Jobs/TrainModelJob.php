@@ -2,12 +2,16 @@
 
 namespace App\Jobs;
 
+use App\Contracts\Queue\ShouldBeAuthorized;
 use App\Domain\Models\Events\ModelTrained;
 use App\Enums\ModelStatus;
 use App\Enums\TrainingStatus;
+use App\Jobs\Middleware\EnsureJobIsAuthorized;
 use App\Jobs\Middleware\LogJobExecution;
 use App\Jobs\Middleware\NotifyWebhook;
+use App\Models\PredictiveModel;
 use App\Models\TrainingRun;
+use App\Models\User;
 use App\Services\ModelStatusService;
 use App\Services\ModelTrainingService;
 use DateTimeInterface;
@@ -23,7 +27,7 @@ use Illuminate\Support\Facades\Log;
 use Random\RandomException;
 use Throwable;
 
-class TrainModelJob implements ShouldQueue, ShouldBeUnique
+class TrainModelJob implements ShouldQueue, ShouldBeUnique, ShouldBeAuthorized
 {
     use Dispatchable;
     use InteractsWithQueue;
@@ -46,6 +50,7 @@ class TrainModelJob implements ShouldQueue, ShouldBeUnique
         private readonly string $trainingRunId,
         private readonly ?array $hyperparameters = null,
         private readonly ?string $webhookUrl = null,
+        private readonly ?string $userId = null,
     ) {
         $this->onConnection(self::CONNECTION);
         $this->onQueue(self::QUEUE);
@@ -67,6 +72,7 @@ class TrainModelJob implements ShouldQueue, ShouldBeUnique
     public function middleware(): array
     {
         return [
+            new EnsureJobIsAuthorized(),
             new LogJobExecution(),
             new RateLimited('default'),
             new NotifyWebhook(),
@@ -81,6 +87,35 @@ class TrainModelJob implements ShouldQueue, ShouldBeUnique
     public function uniqueId(): string
     {
         return "train-model-{$this->trainingRunId}";
+    }
+
+    public function authorize(): bool
+    {
+        $run = TrainingRun::query()->with('model')->find($this->trainingRunId);
+
+        if (! $run instanceof TrainingRun) {
+            return false;
+        }
+
+        $model = $run->model;
+
+        if (! $model instanceof PredictiveModel) {
+            return false;
+        }
+
+        $userId = $this->userId ?? $run->initiated_by;
+
+        if ($userId === null) {
+            return false;
+        }
+
+        $user = User::find($userId);
+
+        if (! $user instanceof User) {
+            return false;
+        }
+
+        return $user->can('train', $model);
     }
 
     /**

@@ -5,11 +5,13 @@ namespace Tests\Unit\Jobs;
 use App\Domain\Models\Events\ModelTrained;
 use App\Enums\ModelStatus;
 use App\Enums\TrainingStatus;
+use App\Jobs\Middleware\EnsureJobIsAuthorized;
 use App\Jobs\Middleware\NotifyWebhook;
 use App\Jobs\TrainModelJob;
 use App\Models\Dataset;
 use App\Models\PredictiveModel;
 use App\Models\TrainingRun;
+use App\Models\User;
 use App\Services\ModelStatusService;
 use App\Services\ModelTrainingService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -49,17 +51,20 @@ class TrainModelJobTest extends TestCase
             'hyperparameters' => null,
         ]);
 
+        $user = User::factory()->create();
+
         $run = TrainingRun::query()->create([
             'model_id' => $model->id,
             'status' => TrainingStatus::Queued,
             'queued_at' => now(),
+            'initiated_by' => $user->id,
         ]);
 
         $job = new TrainModelJob($run->id, [
             'learning_rate' => 0.25,
             'iterations' => 800,
             'validation_split' => 0.2,
-        ]);
+        ], null, $user->id);
 
         $job->handle(
             app(ModelTrainingService::class),
@@ -119,10 +124,13 @@ class TrainModelJobTest extends TestCase
             'hyperparameters' => null,
         ]);
 
+        $user = User::factory()->create();
+
         $run = TrainingRun::query()->create([
             'model_id' => $model->id,
             'status' => TrainingStatus::Queued,
             'queued_at' => now(),
+            'initiated_by' => $user->id,
         ]);
 
         $job = new TrainModelJob($run->id, [
@@ -134,7 +142,7 @@ class TrainModelJobTest extends TestCase
             'probability_estimates' => false,
             'kernel' => 'rbf',
             'kernel_options' => ['gamma' => 0.5],
-        ]);
+        ], null, $user->id);
 
         $job->handle(
             app(ModelTrainingService::class),
@@ -173,13 +181,16 @@ class TrainModelJobTest extends TestCase
             'metadata' => [],
         ]);
 
+        $user = User::factory()->create();
+
         $run = TrainingRun::query()->create([
             'model_id' => $model->id,
             'status' => TrainingStatus::Queued,
             'queued_at' => now(),
+            'initiated_by' => $user->id,
         ]);
 
-        $job = new TrainModelJob($run->id);
+        $job = new TrainModelJob($run->id, null, null, $user->id);
 
         try {
             $job->handle(
@@ -202,12 +213,20 @@ class TrainModelJobTest extends TestCase
 
     public function test_middleware_includes_notify_webhook(): void
     {
-        $job = new TrainModelJob(Str::uuid()->toString(), null, 'https://example.test/webhooks/training');
+        $job = new TrainModelJob(
+            Str::uuid()->toString(),
+            null,
+            'https://example.test/webhooks/training',
+            User::factory()->create()->id,
+        );
 
         $middleware = $job->middleware();
 
         $this->assertTrue(
             collect($middleware)->contains(fn ($instance): bool => $instance instanceof NotifyWebhook),
+        );
+        $this->assertTrue(
+            collect($middleware)->contains(fn ($instance): bool => $instance instanceof EnsureJobIsAuthorized),
         );
         $this->assertSame('https://example.test/webhooks/training', $job->getWebhookUrl());
     }

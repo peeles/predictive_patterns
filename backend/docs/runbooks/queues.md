@@ -10,9 +10,11 @@ This runbook explains how predictive-model workloads are isolated onto dedicated
 When dispatching jobs manually, call the `dispatch` helper without providing a queue name—the constructors already pin the job to the `training` connection. Example:
 
 ```php
-TrainModelJob::dispatch($trainingRunId);
+TrainModelJob::dispatch($trainingRunId, $hyperparameters, $webhookUrl, $userId);
 EvaluateModelJob::dispatch($modelId);
 ```
+
+Provide the identifier of the user who initiated the training run so the job can authorize itself before execution.
 
 Both jobs will use the queue declared in `config/queue.php` under the `training` connection, which defaults to a Redis-backed `training` queue.
 

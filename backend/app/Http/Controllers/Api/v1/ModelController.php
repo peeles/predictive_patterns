@@ -352,6 +352,7 @@ class ModelController extends BaseController
             $run->id,
             $hyperparameters ?: null,
             $validated['webhook_url'] ?? null,
+            $initiatedBy,
         );
 
         $responsePayload = [
