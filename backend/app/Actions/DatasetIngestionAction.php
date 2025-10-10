@@ -3,7 +3,7 @@
 namespace App\Actions;
 
 use App\Enums\DatasetStatus;
-use App\Events\Datasets\DatasetIngestionStarted;
+use App\Events\DatasetStatusChanged;
 use App\Http\Requests\DatasetIngestRequest;
 use App\Jobs\IngestRemoteDataset;
 use App\Models\Dataset;
@@ -62,7 +62,7 @@ class DatasetIngestionAction
         $dataset->refresh();
 
         if ($dataset->status === DatasetStatus::Processing) {
-            event(new DatasetIngestionStarted($dataset, 0.0));
+            event(DatasetStatusChanged::fromDataset($dataset, 0.0));
         }
 
         if ($dataset->source_type === 'url') {

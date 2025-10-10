@@ -3,7 +3,7 @@
 namespace Tests\Unit\Services\Datasets;
 
 use App\Enums\DatasetStatus;
-use App\Events\Datasets\DatasetIngestionFailed;
+use App\Events\DatasetStatusChanged;
 use App\Models\Dataset;
 use App\Services\Datasets\DatasetRepository;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -50,8 +50,10 @@ class DatasetRepositoryTest extends TestCase
         $this->assertSame(DatasetStatus::Failed, $dataset->status);
         $this->assertSame('boom', $dataset->metadata['ingest_error']);
 
-        Event::assertDispatched(DatasetIngestionFailed::class, function (DatasetIngestionFailed $event) use ($dataset) {
-            return $event->dataset->is($dataset) && $event->message === 'boom';
+        Event::assertDispatched(DatasetStatusChanged::class, function (DatasetStatusChanged $event) use ($dataset) {
+            return $event->datasetId === $dataset->getKey()
+                && $event->status === DatasetStatus::Failed
+                && $event->message === 'boom';
         });
     }
 

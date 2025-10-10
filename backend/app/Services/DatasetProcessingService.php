@@ -2,9 +2,7 @@
 
 namespace App\Services;
 
-use App\Events\Datasets\DatasetIngestionCompleted;
-use App\Events\Datasets\DatasetIngestionProgressed;
-use App\Events\DatasetStatusUpdated;
+use App\Events\DatasetStatusChanged;
 use App\Jobs\CompleteDatasetIngestion;
 use App\Models\Dataset;
 use App\Services\Datasets\DatasetRepository;
@@ -12,7 +10,6 @@ use App\Services\Datasets\FeatureGenerator;
 use App\Services\Datasets\SchemaMapper;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Testing\Fakes\EventFake;
 use RedisException;
 use Throwable;
 
@@ -134,8 +131,7 @@ class DatasetProcessingService
 
         $dataset->refresh();
 
-        event(new DatasetIngestionCompleted($dataset));
-        $this->dispatchStatusUpdateIfEventsFaked($dataset, 1.0);
+        event(DatasetStatusChanged::fromDataset($dataset, 1.0));
 
         return $dataset;
     }
@@ -274,8 +270,9 @@ class DatasetProcessingService
 
     private function dispatchProgress(Dataset $dataset, ?float $progress, ?string $message = null): void
     {
-        event(new DatasetIngestionProgressed($dataset, $progress, $message));
-        $this->dispatchStatusUpdateIfEventsFaked($dataset, $progress, $message);
+        $normalized = $this->normalizeProgress($progress);
+
+        event(DatasetStatusChanged::fromDataset($dataset, $normalized, $message));
     }
 
     private function extractRowCount(?array $preview): ?int
@@ -291,21 +288,6 @@ class DatasetProcessingService
         }
 
         return is_numeric($rowCount) ? max((int) $rowCount, 0) : null;
-    }
-
-    private function dispatchStatusUpdateIfEventsFaked(
-        Dataset $dataset,
-        ?float $progress,
-        ?string $message = null
-    ): void {
-        $dispatcher = app('events');
-
-        if (! $dispatcher instanceof EventFake) {
-            return;
-        }
-
-        $normalized = $this->normalizeProgress($progress);
-        event(DatasetStatusUpdated::fromDataset($dataset, $normalized, $message));
     }
 
     private function normalizeProgress(?float $progress): ?float
