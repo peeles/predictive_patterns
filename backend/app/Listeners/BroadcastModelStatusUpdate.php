@@ -9,6 +9,7 @@ use App\Events\ModelStatusUpdated;
 use App\Support\Broadcasting\BroadcastDispatcher;
 use App\Models\PredictiveModel;
 use Carbon\CarbonInterface;
+
 class BroadcastModelStatusUpdate
 {
     public function handle(ModelStatusChanged|ModelTrained $event): void

@@ -88,11 +88,11 @@ class BroadcastDispatcher
         $message = strtolower($exception->getMessage());
 
         if ($message !== '' && (
-                str_contains($message, 'connection refused')
+            str_contains($message, 'connection refused')
                 || str_contains($message, 'failed to connect')
                 || str_contains($message, 'could not connect')
                 || str_contains($message, 'connection timed out')
-            )) {
+        )) {
             return true;
         }
 

@@ -164,12 +164,9 @@ class DatasetProcessingService
         $connection = (string) config('queue.default');
         $driver = config(sprintf('queue.connections.%s.driver', $connection));
         $driver = is_string($driver) ? $driver : '';
-        $busIsFaked = $this->isBusFaked();
 
         $shouldRunSync = $this->shouldRunSynchronously($driver)
-            && (! $forceQueue
-                || $driver === 'null'
-                || ($driver === 'sync' && ! $busIsFaked));
+            && (! $forceQueue || $driver === 'null' || $driver === 'sync');
 
         if ($shouldRunSync) {
             $dataset->refresh();
@@ -212,7 +209,7 @@ class DatasetProcessingService
 
         $this->dispatchProgress($dataset, 0.0);
 
-        if ($driver === 'sync' && ! $busIsFaked) {
+        if ($driver === 'sync') {
             return $dataset->refresh();
         }
 

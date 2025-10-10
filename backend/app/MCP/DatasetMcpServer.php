@@ -141,7 +141,7 @@ class DatasetMcpServer
                     'error' => $exception->getMessage(),
                 ]);
             })
-            ->finally(static function () : void {
+            ->finally(static function (): void {
                 Cache::forget('dataset-records:ingestion:running');
             });
 
