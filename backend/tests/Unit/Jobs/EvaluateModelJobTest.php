@@ -5,6 +5,7 @@ namespace Tests\Unit\Jobs;
 use App\Enums\ModelStatus;
 use App\Enums\TrainingStatus;
 use App\Jobs\EvaluateModelJob;
+use App\Jobs\Factories\ModelJobFactory;
 use App\Models\Dataset;
 use App\Models\PredictiveModel;
 use App\Models\TrainingRun;
@@ -29,7 +30,7 @@ class EvaluateModelJobTest extends TestCase
 
         config(['queue.connections.training.queue' => 'training']);
 
-        EvaluateModelJob::dispatch('model-id');
+        dispatch(ModelJobFactory::evaluation('model-id'));
 
         Queue::assertPushed(EvaluateModelJob::class, function (EvaluateModelJob $job): bool {
             return $job->connection === 'training' && $job->queue === 'training';

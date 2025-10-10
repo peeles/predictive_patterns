@@ -7,11 +7,11 @@ This runbook explains how predictive-model workloads are isolated onto dedicated
 - **Default queue (`default`)** – lightweight API notifications and ingestion events continue to run here. It is processed by the `api` Horizon supervisor.
 - **Training queue (`training`)** – long-running `TrainModelJob` and `EvaluateModelJob` instances are dispatched onto the `training` queue connection during job construction. This keeps CPU intensive work off of the default worker pool.
 
-When dispatching jobs manually, call the `dispatch` helper without providing a queue name—the constructors already pin the job to the `training` connection. Example:
+When dispatching jobs manually, use the `ModelJobFactory` to build the job and call the `dispatch` helper without providing a queue name—the constructors already pin the job to the `training` connection. Example:
 
 ```php
-TrainModelJob::dispatch($trainingRunId, $hyperparameters, $webhookUrl, $userId);
-EvaluateModelJob::dispatch($modelId);
+$dispatch = dispatch(ModelJobFactory::training($trainingRunId, $hyperparameters, $webhookUrl, $userId));
+$dispatch = dispatch(ModelJobFactory::evaluation($modelId));
 ```
 
 Provide the identifier of the user who initiated the training run so the job can authorize itself before execution.
