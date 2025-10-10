@@ -7,23 +7,22 @@ namespace App\Support\Broadcasting;
 use Illuminate\Broadcasting\BroadcastException;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Log;
+use RedisException;
 use Throwable;
 
 class BroadcastDispatcher
 {
-    /**
-     * Flag used to prevent repeated broadcast attempts once the transport is known to be unavailable.
-     */
     private static bool $transportUnavailable = false;
+    private static ?int $unavailableUntil = null;
+    private static int $resetAfterSeconds = 300; // 5 minutes
 
-    /**
-     * Dispatch a broadcastable event with proper error handling.
-     *
-     * @param object $event
-     * @param array<string, mixed> $context
-     */
     public static function dispatch(object $event, array $context = []): void
     {
+        // Check if circuit breaker should reset
+        if (self::$transportUnavailable && self::shouldResetCircuitBreaker()) {
+            self::resetCircuitBreaker();
+        }
+
         if (self::$transportUnavailable) {
             return;
         }
@@ -33,7 +32,6 @@ class BroadcastDispatcher
         } catch (BroadcastException $exception) {
             if (self::isTransportIssue($exception)) {
                 self::markTransportUnavailable($event, $exception, $context);
-
                 return;
             }
 
@@ -45,7 +43,6 @@ class BroadcastDispatcher
         } catch (Throwable $exception) {
             if (self::isTransportIssue($exception)) {
                 self::markTransportUnavailable($event, $exception, $context);
-
                 return;
             }
 
@@ -56,20 +53,46 @@ class BroadcastDispatcher
         }
     }
 
+    private static function shouldResetCircuitBreaker(): bool
+    {
+        return self::$unavailableUntil !== null && time() > self::$unavailableUntil;
+    }
+
+    private static function resetCircuitBreaker(): void
+    {
+        Log::info('Broadcast circuit breaker reset, retrying broadcasts');
+        self::$transportUnavailable = false;
+        self::$unavailableUntil = null;
+    }
+
+    private static function markTransportUnavailable(object $event, Throwable $exception, array $context = []): void
+    {
+        self::$transportUnavailable = true;
+        self::$unavailableUntil = time() + self::$resetAfterSeconds;
+
+        Log::warning('Broadcast transport unavailable, suppressing for ' . self::$resetAfterSeconds . ' seconds.', array_merge([
+            'event' => $event::class,
+            'driver' => config('broadcasting.default'),
+            'exception' => $exception->getMessage(),
+            'exception_class' => $exception::class,
+            'reset_at' => date('Y-m-d H:i:s', self::$unavailableUntil),
+        ], $context));
+    }
+
     private static function isTransportIssue(Throwable $exception): bool
     {
-        if (class_exists('RedisException') && $exception instanceof \RedisException) {
+        if (class_exists('RedisException') && $exception instanceof RedisException) {
             return true;
         }
 
         $message = strtolower($exception->getMessage());
 
         if ($message !== '' && (
-            str_contains($message, 'connection refused')
+                str_contains($message, 'connection refused')
                 || str_contains($message, 'failed to connect')
                 || str_contains($message, 'could not connect')
                 || str_contains($message, 'connection timed out')
-        )) {
+            )) {
             return true;
         }
 
@@ -82,30 +105,9 @@ class BroadcastDispatcher
         return false;
     }
 
-    /**
-     * Mark the broadcast transport as unavailable and log a warning with context.
-     *
-     * @param object $event
-     * @param Throwable $exception
-     * @param array<string, mixed> $context
-     */
-    private static function markTransportUnavailable(object $event, Throwable $exception, array $context = []): void
-    {
-        self::$transportUnavailable = true;
-
-        Log::warning('Broadcast transport unavailable, suppressing further attempts.', array_merge([
-            'event' => $event::class,
-            'driver' => config('broadcasting.default'),
-            'exception' => $exception->getMessage(),
-            'exception_class' => $exception::class,
-        ], $context));
-    }
-
-    /**
-     * Reset the internal suppression flag. Intended for testing purposes.
-     */
     public static function resetSuppressedTransport(): void
     {
         self::$transportUnavailable = false;
+        self::$unavailableUntil = null;
     }
 }
