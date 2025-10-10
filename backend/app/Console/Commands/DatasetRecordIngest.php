@@ -11,6 +11,7 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use InvalidArgumentException;
 use Throwable;
@@ -73,6 +74,8 @@ class DatasetRecordIngest extends Command
         foreach ($chunks as $index => $chunk) {
             $jobs = array_map(fn (string $month) => new IngestDatasetRecords($month, $dryRun), $chunk);
 
+            Cache::put('dataset-records:ingestion:running', true, now()->addMinutes(10));
+
             $pendingBatch = Bus::batch($jobs)
                 ->name(sprintf('dataset-record-ingest-%s-%d', now()->format('YmdHis'), $index + 1))
                 ->allowFailures()
@@ -91,6 +94,9 @@ class DatasetRecordIngest extends Command
                         'dry_run' => $dryRun,
                         'error' => $exception->getMessage(),
                     ]);
+                })
+                ->finally(function (): void {
+                    Cache::forget('dataset-records:ingestion:running');
                 });
 
             if ($queue) {
