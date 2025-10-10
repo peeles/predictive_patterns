@@ -8,7 +8,9 @@ use App\Enums\Role;
 use App\Models\DatasetRecordIngestionRun;
 use App\Jobs\CompleteDatasetIngestion;
 use App\Jobs\IngestRemoteDataset;
+use App\Jobs\NotifyDatasetReady;
 use App\Models\Dataset;
+use App\Notifications\DatasetReadyNotification;
 use App\Services\H3AggregationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -17,6 +19,7 @@ use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\Notification;
 use Tests\TestCase;
 
 class DatasetApiTest extends TestCase
@@ -49,7 +52,25 @@ class DatasetApiTest extends TestCase
         $this->assertSame(0, $data['features_count']);
 
         Bus::assertDispatched(CompleteDatasetIngestion::class, static function (CompleteDatasetIngestion $job) use ($data): bool {
-            return $job->datasetId === $data['id'];
+            $chained = (static function (): array {
+                return property_exists($this, 'chained') ? (array) $this->chained : [];
+            })->call($job);
+
+            $hasNotification = false;
+
+            foreach ($chained as $queuedJob) {
+                if (is_string($queuedJob) && str_contains($queuedJob, NotifyDatasetReady::class)) {
+                    $hasNotification = true;
+                    break;
+                }
+
+                if (is_array($queuedJob) && array_key_exists('job', $queuedJob) && $queuedJob['job'] === NotifyDatasetReady::class) {
+                    $hasNotification = true;
+                    break;
+                }
+            }
+
+            return $job->datasetId === $data['id'] && $hasNotification;
         });
 
         $this->assertDatabaseHas('datasets', [
@@ -63,6 +84,7 @@ class DatasetApiTest extends TestCase
         Storage::fake('local');
         Cache::flush();
         Bus::fake();
+        Notification::fake();
 
         config()->set('queue.default', 'null');
 
@@ -93,6 +115,11 @@ class DatasetApiTest extends TestCase
                 'id' => $data['id'],
                 'status' => DatasetStatus::Ready->value,
             ]);
+
+            Notification::assertSentTo(
+                $tokens['user'],
+                DatasetReadyNotification::class
+            );
         } finally {
             config()->set('queue.default', 'sync');
         }

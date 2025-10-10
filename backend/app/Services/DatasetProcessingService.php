@@ -6,6 +6,7 @@ use App\Events\Datasets\DatasetIngestionCompleted;
 use App\Events\Datasets\DatasetIngestionProgressed;
 use App\Events\DatasetStatusUpdated;
 use App\Jobs\CompleteDatasetIngestion;
+use App\Jobs\NotifyDatasetReady;
 use App\Models\Dataset;
 use App\Services\Datasets\DatasetRepository;
 use App\Services\Datasets\FeatureGenerator;
@@ -162,11 +163,16 @@ class DatasetProcessingService
         if ($driver === 'null') {
             $dataset->refresh();
 
-            return $this->finalise($dataset, $schemaMapping, $additionalMetadata);
+            $finalised = $this->finalise($dataset, $schemaMapping, $additionalMetadata);
+            $this->dispatchReadyNotificationSynchronously($finalised);
+
+            return $finalised;
         }
 
         try {
-            CompleteDatasetIngestion::dispatch(
+            CompleteDatasetIngestion::withChain([
+                new NotifyDatasetReady($dataset->getKey()),
+            ])->dispatch(
                 $dataset->getKey(),
                 $schemaMapping,
                 $additionalMetadata
@@ -182,7 +188,10 @@ class DatasetProcessingService
 
                 $dataset->refresh();
 
-                return $this->finalise($dataset, $schemaMapping, $additionalMetadata);
+                $finalised = $this->finalise($dataset, $schemaMapping, $additionalMetadata);
+                $this->dispatchReadyNotificationSynchronously($finalised);
+
+                return $finalised;
             }
 
             throw $exception;
@@ -191,6 +200,11 @@ class DatasetProcessingService
         $this->dispatchProgress($dataset, 0.0);
 
         return $dataset;
+    }
+
+    private function dispatchReadyNotificationSynchronously(Dataset $dataset): void
+    {
+        NotifyDatasetReady::dispatchSync($dataset->getKey());
     }
 
     private function shouldFallbackToSynchronousQueue(Throwable $exception): bool

@@ -7,6 +7,10 @@ use App\Models\DatasetRecord;
 use App\Services\H3AggregationService;
 use Carbon\Carbon;
 use Carbon\CarbonImmutable;
+use Illuminate\Bus\Batch;
+use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 use InvalidArgumentException;
 use Throwable;
 
@@ -114,11 +118,41 @@ class DatasetMcpServer
         $months = array_values(array_unique($months));
         sort($months);
 
-        foreach ($months as $month) {
-            dispatch(new IngestDatasetRecords($month, $dryRun));
-        }
+        $jobs = array_map(static fn (string $month) => new IngestDatasetRecords($month, $dryRun), $months);
 
-        return ['status' => 'queued', 'months' => $months, 'dry_run' => $dryRun];
+        Cache::put('dataset-records:ingestion:running', true, now()->addMinutes(10));
+
+        $pendingBatch = Bus::batch($jobs)
+            ->name(sprintf('dataset-record-mcp-%s', now()->format('YmdHis')))
+            ->allowFailures()
+            ->then(static function (Batch $batch) use ($months, $dryRun): void {
+                Log::info('Dataset record ingestion batch completed via MCP', [
+                    'batch_id' => $batch->id,
+                    'months' => $months,
+                    'dry_run' => $dryRun,
+                    'failed_jobs' => $batch->failedJobs,
+                ]);
+            })
+            ->catch(static function (Batch $batch, Throwable $exception) use ($months, $dryRun): void {
+                Log::error('Dataset record ingestion batch failed via MCP', [
+                    'batch_id' => $batch->id,
+                    'months' => $months,
+                    'dry_run' => $dryRun,
+                    'error' => $exception->getMessage(),
+                ]);
+            })
+            ->finally(static function () : void {
+                Cache::forget('dataset-records:ingestion:running');
+            });
+
+        $batch = $pendingBatch->dispatch();
+
+        return [
+            'status' => 'queued',
+            'months' => $months,
+            'dry_run' => $dryRun,
+            'batch_id' => $batch->id,
+        ];
     }
 
     private function normalizeMonth(string $value): string
