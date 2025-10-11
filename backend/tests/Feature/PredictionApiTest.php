@@ -52,7 +52,7 @@ class PredictionApiTest extends TestCase
             ]);
 
         $response->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
-            ->assertJsonPath('errors.model_id.0', 'The model id field must be a valid UUID.');
+            ->assertJsonPath('errors.model_id.0', 'The model id must be a valid UUID.');
     }
 
     public function test_predictions_index_returns_paginated_filtered_results(): void

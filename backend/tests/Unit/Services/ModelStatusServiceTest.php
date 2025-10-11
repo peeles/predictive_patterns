@@ -22,6 +22,7 @@ class ModelStatusServiceTest extends TestCase
         ]);
 
         Event::fake([ModelStatusChanged::class]);
+        Redis::shouldReceive('get')->once()->andReturn(null);
         Redis::shouldReceive('setex')->once()->andReturnTrue();
         Redis::shouldReceive('publish')->once()->andReturnTrue();
 
@@ -51,5 +52,34 @@ class ModelStatusServiceTest extends TestCase
         $this->assertSame('active', $status['state']);
         $this->assertNull($status['progress']);
         $this->assertNotEmpty($status['updated_at']);
+    }
+
+    public function test_duplicate_snapshots_do_not_emit_additional_events(): void
+    {
+        $model = PredictiveModel::factory()->create([
+            'status' => ModelStatus::Draft,
+        ]);
+
+        Event::fake([ModelStatusChanged::class]);
+
+        $firstSnapshot = null;
+
+        Redis::shouldReceive('get')
+            ->twice()
+            ->andReturn(null, function () use (&$firstSnapshot): ?string {
+                return $firstSnapshot !== null ? json_encode($firstSnapshot) : null;
+            });
+
+        Redis::shouldReceive('setex')->twice()->andReturnTrue();
+        Redis::shouldReceive('publish')->twice()->andReturnTrue();
+
+        $service = app(ModelStatusService::class);
+
+        $firstSnapshot = $service->markQueued($model->id, 'evaluating');
+        $secondSnapshot = $service->markQueued($model->id, 'evaluating');
+
+        $this->assertSame($firstSnapshot['updated_at'], $secondSnapshot['updated_at']);
+
+        Event::assertDispatchedTimes(ModelStatusChanged::class, 2);
     }
 }

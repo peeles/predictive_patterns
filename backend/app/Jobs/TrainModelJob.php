@@ -36,9 +36,6 @@ class TrainModelJob implements ShouldQueue, ShouldBeUnique, ShouldBeAuthorized
     use Queueable;
     use SerializesModels;
 
-    public string $connection = 'training';
-    public string $queue = 'training';
-
     public int $tries = 1;
     public int $timeout = 3600;
     public int $maxExceptions = 1;
@@ -53,6 +50,8 @@ class TrainModelJob implements ShouldQueue, ShouldBeUnique, ShouldBeAuthorized
         private readonly ?string $webhookUrl = null,
         private readonly ?string $userId = null,
     ) {
+        $this->onConnection('training');
+        $this->onQueue(config('queue.connections.training.queue', 'training'));
     }
 
     public function retryUntil(): DateTimeInterface

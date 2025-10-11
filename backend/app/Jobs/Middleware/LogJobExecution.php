@@ -9,9 +9,14 @@ use Throwable;
 class LogJobExecution
 {
     /**
+     * Handle the job execution and log its progress.
+     *
      * @template TJob of object
-     * @param TJob $job
+     * @param object $job
      * @param Closure(TJob): mixed $next
+     *
+     * @return mixed
+     * @throws Throwable
      */
     public function handle(object $job, Closure $next): mixed
     {

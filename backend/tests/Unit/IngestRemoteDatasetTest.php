@@ -170,7 +170,7 @@ class IngestRemoteDatasetTest extends TestCase
             return $event->datasetId === $dataset->id && $event->status === DatasetStatus::Failed;
         });
 
-        Event::assertDispatchedTimes(DatasetStatusUpdated::class, 3);
+        Event::assertDispatchedTimes(DatasetStatusUpdated::class, 4);
     }
 
     private function progressEquals(?float $actual, float $expected, float $delta = 0.0001): bool

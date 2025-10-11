@@ -25,10 +25,10 @@ class ModelStatusService
 
     public function markProgress(string $modelId, string $jobType, float $progress, ?string $message = null): array
     {
-        $state = $this->normalizeJobType($jobType);
-        $normalized = $this->normalizeProgress($progress);
+        $state = $this->normaliseJobType($jobType);
+        $normalised = $this->normaliseProgress($progress);
 
-        return $this->store($modelId, $state, $normalized, $message);
+        return $this->store($modelId, $state, $normalised, $message);
     }
 
     public function markIdle(string $modelId, ?string $message = null): array
@@ -61,7 +61,6 @@ class ModelStatusService
         }
 
         if (is_string($payload) && $payload !== '') {
-            /** @var array{state?: string, progress?: float|null, updated_at?: string, message?: string|null}|null $decoded */
             $decoded = json_decode($payload, true);
 
             if (is_array($decoded)) {
@@ -87,13 +86,25 @@ class ModelStatusService
 
     private function store(string $modelId, string $state, ?float $progress, ?string $message = null): array
     {
+        $normalisedMessage = $this->normaliseMessage($message);
+        $previous = $this->retrieveExistingSnapshot($modelId);
+
         $timestamp = now()->toIso8601String();
+        $shouldBroadcast = true;
+
+        if ($previous !== null
+            && ($previous['state'] ?? null) === $state
+            && ($previous['progress'] ?? null) === $progress
+            && ($previous['message'] ?? null) === $normalisedMessage) {
+            $shouldBroadcast = false;
+            $timestamp = (string) Arr::get($previous, 'updated_at', $timestamp);
+        }
 
         $payload = [
             'state' => $state,
             'progress' => $progress,
             'updated_at' => $timestamp,
-            'message' => $this->normalizeMessage($message),
+            'message' => $normalisedMessage,
         ];
 
         $encoded = json_encode($payload);
@@ -101,26 +112,61 @@ class ModelStatusService
 
         try {
             Redis::setex($this->key($modelId), $ttl, (string) $encoded);
-            Redis::publish($this->channel, json_encode([
-                'model_id' => $modelId,
-                'state' => $payload['state'],
-                'progress' => $payload['progress'],
-                'updated_at' => $payload['updated_at'],
-                'message' => $payload['message'],
-            ]));
+            if ($shouldBroadcast) {
+                Redis::publish($this->channel, json_encode([
+                    'model_id' => $modelId,
+                    'state' => $payload['state'],
+                    'progress' => $payload['progress'],
+                    'updated_at' => $payload['updated_at'],
+                    'message' => $payload['message'],
+                ]));
+            }
         } catch (Throwable) {
             // Redis failures should not prevent the request lifecycle.
         }
 
-        event(new ModelStatusChanged(
-            $modelId,
-            $payload['state'],
-            $payload['progress'],
-            $payload['updated_at'],
-            $payload['message'],
-        ));
+        if ($shouldBroadcast) {
+            event(new ModelStatusChanged(
+                $modelId,
+                $payload['state'],
+                $payload['progress'],
+                $payload['updated_at'],
+                $payload['message'],
+            ));
+        }
 
         return $payload;
+    }
+
+    /**
+     * Retrieve an existing snapshot from Redis, if available.
+     *
+     * @param string $modelId
+     *
+     * @return array{state: string|null, progress: float|null, updated_at: string|null, message: string|null}|null
+     */
+    private function retrieveExistingSnapshot(string $modelId): ?array
+    {
+        try {
+            $cached = Redis::get($this->key($modelId));
+
+            if (is_string($cached) && $cached !== '') {
+                $decoded = json_decode($cached, true);
+
+                if (is_array($decoded)) {
+                    return [
+                        'state' => Arr::get($decoded, 'state'),
+                        'progress' => Arr::get($decoded, 'progress'),
+                        'updated_at' => Arr::get($decoded, 'updated_at'),
+                        'message' => Arr::get($decoded, 'message'),
+                    ];
+                }
+            }
+        } catch (Throwable) {
+            return null;
+        }
+
+        return null;
     }
 
     private function key(string $modelId): string
@@ -128,7 +174,7 @@ class ModelStatusService
         return sprintf('model-status:%s', $modelId);
     }
 
-    private function normalizeJobType(string $jobType): string
+    private function normaliseJobType(string $jobType): string
     {
         return match ($jobType) {
             'training', 'train' => 'training',
@@ -137,7 +183,7 @@ class ModelStatusService
         };
     }
 
-    private function normalizeProgress(float $progress): float
+    private function normaliseProgress(float $progress): float
     {
         if (is_nan($progress) || is_infinite($progress)) {
             return 0.0;
@@ -146,7 +192,7 @@ class ModelStatusService
         return round(min(100, max(0, $progress)), 2);
     }
 
-    private function normalizeMessage(?string $message): ?string
+    private function normaliseMessage(?string $message): ?string
     {
         if ($message === null) {
             return null;
