@@ -5,7 +5,6 @@ namespace Tests\Unit\Actions;
 use App\Actions\DatasetIngestionAction;
 use App\Events\DatasetStatusChanged;
 use App\Http\Requests\DatasetIngestRequest;
-use App\Jobs\IngestRemoteDataset;
 use App\Models\Dataset;
 use App\Models\User;
 use App\Services\DatasetProcessingService;
