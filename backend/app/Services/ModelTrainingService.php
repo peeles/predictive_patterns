@@ -13,6 +13,7 @@ use App\Support\Phpml\ImputerFactory;
 use App\Support\ProbabilityScoreExtractor;
 use ArgumentCountError;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Phpml\Classification\DecisionTree;
 use Phpml\Classification\KNearestNeighbors;
@@ -92,6 +93,20 @@ class ModelTrainingService
         $this->notifyProgress($progressCallback, 10.0, 'Analyzing dataset schema');
 
         $columnMap = $this->resolveColumnMap($dataset);
+
+        $chunkedService = new ChunkedModelTrainingService();
+        if ($chunkedService->supportsChunkedTraining($dataset)) {
+            $chunkSize = $chunkedService->getOptimalChunkSize($dataset);
+            $this->notifyProgress($progressCallback, 5.0, "Large dataset detected. Using chunked training (chunk size: {$chunkSize})");
+
+            // Log for monitoring
+            Log::info('Using chunked training', [
+                'dataset_id' => $dataset->id,
+                'chunk_size' => $chunkSize,
+                'file_size' => filesize($path),
+            ]);
+        }
+
         $prepared = DatasetRowPreprocessor::prepareTrainingData($path, $columnMap);
         $buffer = $prepared['buffer'];
 
@@ -108,6 +123,22 @@ class ModelTrainingService
         $this->notifyProgress($progressCallback, 40.0, 'Computed training splits and statistics');
 
         $trainRaw = $this->bufferToSamples($splits['train_buffer']);
+
+        if (memory_get_usage(true) > 500 * 1024 * 1024) { // If using > 500MB
+            Log::info('Dataset too large, sampling to 50%', [
+                'current_memory' => memory_get_usage(true),
+                'sample_count' => count($trainRaw['samples']),
+            ]);
+
+            $sampled = $this->sampleDataset(
+                $trainRaw['samples'],
+                $trainRaw['labels'],
+                0.5
+            );
+
+            $trainRaw = $sampled;
+        }
+
         $validationRaw = $this->bufferToSamples($splits['validation_buffer']);
 
         if ($trainRaw['samples'] === [] || $trainRaw['labels'] === []) {
@@ -2006,5 +2037,38 @@ class ModelTrainingService
 
             $progressCallback($progress, $message);
         };
+    }
+
+    private function sampleDataset(array $samples, array $labels, float $sampleRate = 0.5): array
+    {
+        $count = count($samples);
+        if ($count === 0) {
+            return [
+                'samples' => [],
+                'labels' => [],
+            ];
+        }
+
+        $sampleSize = (int) ceil($count * $sampleRate);
+        $sampleSize = max(1, min($count, $sampleSize));
+
+        // Random sampling without allocating an additional index array
+        $indices = array_rand($samples, $sampleSize);
+        if (!is_array($indices)) {
+            $indices = [$indices];
+        }
+
+        $sampledSamples = [];
+        $sampledLabels = [];
+
+        foreach ($indices as $index) {
+            $sampledSamples[] = $samples[$index];
+            $sampledLabels[] = $labels[$index];
+        }
+
+        return [
+            'samples' => $sampledSamples,
+            'labels' => $sampledLabels,
+        ];
     }
 }
