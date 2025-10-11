@@ -206,7 +206,7 @@ return [
             'maxProcesses' => (int) env('HORIZON_TRAINING_MAX_PROCESSES', 1),
             'maxTime' => 0,
             'maxJobs' => (int) env('HORIZON_TRAINING_MAX_JOBS', 1),
-            'memory' => (int) env('HORIZON_TRAINING_MEMORY', 512),
+            'memory' => (int) env('HORIZON_TRAINING_MEMORY', 1536),
             'tries' => (int) env('HORIZON_TRAINING_TRIES', 1),
             'timeout' => (int) env('HORIZON_TRAINING_TIMEOUT', 3600),
             'nice' => (int) env('HORIZON_TRAINING_NICE', 0),
@@ -222,7 +222,7 @@ return [
             'balanceCooldown' => 3,
             'maxTime' => 0,
             'maxJobs' => 1, // Added: restart after each job
-            'memory' => 512,
+            'memory' => 1536,
             'tries' => 1,
             'timeout' => (int) env('TRAINING_QUEUE_TIMEOUT', 3600),
             'nice' => 10, // Added: lower priority

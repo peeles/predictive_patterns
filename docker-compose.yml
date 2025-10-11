@@ -65,6 +65,7 @@ services:
       PUSHER_HOST: sockudo
       PUSHER_PORT: 6001
       PUSHER_SCHEME: http
+      RUN_SEEDERS: "false"
     depends_on:
       mysql:
         condition: service_healthy
@@ -125,6 +126,13 @@ services:
       PUSHER_PORT: 6001
       PUSHER_SCHEME: http
       RUN_MIGRATIONS: "false"
+      HORIZON_TRAINING_MEMORY: 1536
+    deploy:
+      resources:
+        limits:
+          memory: 3G
+        reservations:
+          memory: 1G
     depends_on:
       mysql:
         condition: service_healthy
