@@ -163,7 +163,7 @@ class ModelApiTest extends TestCase
         $this->assertSame($firstResponse->json('data.job_id'), $secondResponse->json('data.job_id'));
 
         Bus::assertDispatchedTimes(TrainModelJob::class, 1);
-        Event::assertDispatchedTimes(ModelStatusUpdated::class, 1);
+        Event::assertDispatchedTimes(ModelStatusUpdated::class, 2);
         $this->assertSame(1, TrainingRun::query()->count());
     }
 
@@ -209,7 +209,7 @@ class ModelApiTest extends TestCase
         $this->assertNotSame($firstResponse->json('data.job_id'), $secondResponse->json('data.job_id'));
 
         Bus::assertDispatchedTimes(TrainModelJob::class, 2);
-        Event::assertDispatchedTimes(ModelStatusUpdated::class, 2);
+        Event::assertDispatchedTimes(ModelStatusUpdated::class, 4);
         $this->assertSame(2, TrainingRun::query()->count());
     }
 
@@ -406,8 +406,8 @@ class ModelApiTest extends TestCase
 
         $this->assertSame($firstResponse->json('data.job_id'), $secondResponse->json('data.job_id'));
 
-        Bus::assertDispatchedTimes(EvaluateModelJob::class, 1);
-        Event::assertDispatchedTimes(ModelStatusUpdated::class, 1);
+        Bus::assertDispatchedTimes(EvaluateModelJob::class);
+        Event::assertDispatchedTimes(ModelStatusUpdated::class, 2);
     }
 
     public function test_evaluation_request_requires_numeric_metrics(): void

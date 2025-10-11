@@ -17,7 +17,7 @@ class BroadcastModelStatusUpdate
         if ($event instanceof ModelStatusChanged) {
             $modelId = $event->modelId;
             $state = $event->state;
-            $progress = $this->normalizeProgress($event->progress);
+            $progress = $this->normaliseProgress($event->progress);
             $updatedAt = $event->updatedAt;
             $message = $event->message;
         } else {
@@ -44,7 +44,7 @@ class BroadcastModelStatusUpdate
         ]);
     }
 
-    private function normalizeProgress(?float $progress): ?float
+    private function normaliseProgress(?float $progress): ?float
     {
         if ($progress === null) {
             return null;

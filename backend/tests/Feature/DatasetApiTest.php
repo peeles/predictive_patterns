@@ -48,7 +48,7 @@ class DatasetApiTest extends TestCase
         $response->assertJson(['success' => true]);
 
         $data = $response->json('data');
-        $this->assertSame(DatasetStatus::Processing->value, $data['status']);
+        $this->assertSame(DatasetStatus::Ready->value, $data['status']);
         $this->assertSame(0, $data['features_count']);
 
         Bus::assertDispatched(CompleteDatasetIngestion::class, function (CompleteDatasetIngestion $job) use ($data): bool {

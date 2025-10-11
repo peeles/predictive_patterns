@@ -14,7 +14,8 @@ class ExportQueueMetricsTest extends TestCase
     {
         Redis::shouldReceive('llen')->with('queues:default')->andReturn(25);
 
-        Horizon::shouldReceive('workload')->andReturn([
+        $horizon = Mockery::mock();
+        $horizon->shouldReceive('workload')->andReturn([
             ['name' => 'default', 'length' => 30],
         ]);
 
@@ -26,9 +27,11 @@ class ExportQueueMetricsTest extends TestCase
             ['count' => 5],
         ]);
 
-        Horizon::shouldReceive('stats')->andReturn($stats);
+        $horizon->shouldReceive('stats')->andReturn($stats);
 
         Log::shouldReceive('info')->times(5);
+
+        Horizon::swap($horizon);
 
         $this->artisan('metrics:export-queue')->assertExitCode(0);
     }

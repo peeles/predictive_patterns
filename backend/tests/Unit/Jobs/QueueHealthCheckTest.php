@@ -28,12 +28,66 @@ class QueueHealthCheckTest extends TestCase
 
         DB::shouldReceive('table')->with('failed_jobs')->andReturn($query);
 
-        Log::shouldReceive('warning')->twice();
-        Log::shouldReceive('error')->once();
-        Log::shouldReceive('info')->once();
+        $expectedMetrics = [
+            'queues' => [
+                'default' => [
+                    'queued' => 1_500,
+                    'processing' => 75,
+                    'delayed' => 5,
+                ],
+                'training' => [
+                    'queued' => 120,
+                    'processing' => 60,
+                    'delayed' => 3,
+                ],
+                'broadcasts' => [
+                    'queued' => 0,
+                    'processing' => 0,
+                    'delayed' => 0,
+                ],
+            ],
+            'failed_jobs' => 125,
+        ];
+
+        $capturedLogs = [
+            'warning' => [],
+            'error' => [],
+            'info' => [],
+        ];
+
+        Log::shouldReceive('warning')
+            ->times(2)
+            ->andReturnUsing(static function (string $message, array $metrics) use (&$capturedLogs) {
+                $capturedLogs['warning'][] = compact('message', 'metrics');
+            });
+
+        Log::shouldReceive('error')
+            ->once()
+            ->andReturnUsing(static function (string $message, array $metrics) use (&$capturedLogs) {
+                $capturedLogs['error'][] = compact('message', 'metrics');
+            });
+
+        Log::shouldReceive('info')
+            ->once()
+            ->andReturnUsing(static function (string $message, array $metrics) use (&$capturedLogs) {
+                $capturedLogs['info'][] = compact('message', 'metrics');
+            });
 
         $job = new QueueHealthCheck();
         $job->handle();
+
+        self::assertSame([
+            ['message' => 'High default queue backlog detected', 'metrics' => $expectedMetrics],
+            ['message' => 'High training queue utilization detected', 'metrics' => $expectedMetrics],
+        ], $capturedLogs['warning']);
+
+        self::assertSame([
+            ['message' => 'High number of failed jobs detected', 'metrics' => $expectedMetrics],
+        ], $capturedLogs['error']);
+
+        self::assertSame([
+            ['message' => 'Queue health check metrics collected', 'metrics' => $expectedMetrics],
+        ], $capturedLogs['info']);
 
         Mockery::close();
     }

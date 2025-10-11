@@ -11,7 +11,7 @@ class BroadcastDatasetStatus implements ShouldQueue
 {
     public function handle(DatasetStatusChanged $event): void
     {
-        $normalized = $this->normalizeProgress($event->progress);
+        $normalized = $this->normaliseProgress($event->progress);
         $broadcastEvent = DatasetStatusUpdated::fromStatusChange($event, $normalized);
 
         BroadcastDispatcher::dispatch($broadcastEvent, [
@@ -21,7 +21,7 @@ class BroadcastDatasetStatus implements ShouldQueue
         ]);
     }
 
-    private function normalizeProgress(?float $progress): ?float
+    private function normaliseProgress(?float $progress): ?float
     {
         if ($progress === null) {
             return null;
