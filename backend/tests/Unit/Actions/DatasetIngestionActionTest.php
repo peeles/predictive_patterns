@@ -5,16 +5,20 @@ namespace Tests\Unit\Actions;
 use App\Actions\DatasetIngestionAction;
 use App\Events\DatasetStatusChanged;
 use App\Http\Requests\DatasetIngestRequest;
+use App\Jobs\IngestRemoteDataset;
 use App\Models\User;
 use App\Services\DatasetProcessingService;
 use App\Services\Datasets\SchemaMapper;
 use App\Support\Filesystem\CsvCombiner;
+use Illuminate\Contracts\Bus\Dispatcher;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Mockery;
 use Mockery\Adapter\Phpunit\MockeryPHPUnitIntegration;
+use RuntimeException;
 use Tests\TestCase;
 
 class DatasetIngestionActionTest extends TestCase
@@ -82,5 +86,117 @@ class DatasetIngestionActionTest extends TestCase
                 && $event->status->value === $dataset->status->value
                 && $event->progress === 0.0;
         });
+    }
+
+    public function test_execute_falls_back_to_sync_when_queue_connection_refused(): void
+    {
+        Storage::fake('local');
+        Event::fake();
+        Log::spy();
+
+        $processingService = Mockery::mock(DatasetProcessingService::class);
+        $processingService->shouldReceive('queueFinalise')->never();
+
+        $action = new DatasetIngestionAction(
+            $processingService,
+            new SchemaMapper(),
+            new CsvCombiner()
+        );
+
+        $dispatcher = Mockery::mock(Dispatcher::class)->shouldIgnoreMissing();
+        $dispatcher->shouldReceive('dispatch')
+            ->once()
+            ->andThrow(new RuntimeException('Redis connection refused'));
+
+        $dispatchedSync = false;
+
+        $dispatcher->shouldReceive('dispatchSync')
+            ->once()
+            ->andReturnUsing(function ($job) use (&$dispatchedSync) {
+                $this->assertInstanceOf(IngestRemoteDataset::class, $job);
+                $dispatchedSync = true;
+
+                return null;
+            });
+
+        $container = app();
+        $container->instance(Dispatcher::class, $dispatcher);
+
+        try {
+            /** @var DatasetIngestRequest $request */
+            $request = DatasetIngestRequest::create('/datasets', 'POST', [
+                'name' => 'Remote dataset',
+                'source_type' => 'url',
+                'source_uri' => 'https://example.com/dataset.csv',
+            ]);
+            $request->setContainer($container);
+            $request->setLaravelSession(app('session')->driver());
+            $request->setUserResolver(fn () => User::factory()->create());
+            $request->validateResolved();
+
+            $dataset = $action->execute($request);
+
+            $this->assertDatabaseHas('datasets', [
+                'id' => $dataset->id,
+                'status' => 'pending',
+            ]);
+
+            $this->assertTrue($dispatchedSync);
+
+            Log::shouldHaveReceived('warning')->once()->with(
+                Mockery::type('string'),
+                Mockery::on(function (array $context) use ($dataset) {
+                    return ($context['dataset_id'] ?? null) === $dataset->id;
+                })
+            );
+        } finally {
+            $container->forgetInstance(Dispatcher::class);
+        }
+    }
+
+    public function test_execute_raises_non_connection_queue_errors(): void
+    {
+        Storage::fake('local');
+        Event::fake();
+        Log::spy();
+
+        $processingService = Mockery::mock(DatasetProcessingService::class);
+        $processingService->shouldReceive('queueFinalise')->never();
+
+        $action = new DatasetIngestionAction(
+            $processingService,
+            new SchemaMapper(),
+            new CsvCombiner()
+        );
+
+        $dispatcher = Mockery::mock(Dispatcher::class)->shouldIgnoreMissing();
+        $dispatcher->shouldReceive('dispatch')
+            ->once()
+            ->andThrow(new RuntimeException('Queue failure.'));
+
+        $container = app();
+        $container->instance(Dispatcher::class, $dispatcher);
+
+        try {
+            /** @var DatasetIngestRequest $request */
+            $request = DatasetIngestRequest::create('/datasets', 'POST', [
+                'name' => 'Remote dataset',
+                'source_type' => 'url',
+                'source_uri' => 'https://example.com/dataset.csv',
+            ]);
+            $request->setContainer($container);
+            $request->setLaravelSession(app('session')->driver());
+            $request->setUserResolver(fn () => User::factory()->create());
+            $request->validateResolved();
+
+            $this->expectException(RuntimeException::class);
+            $this->expectExceptionMessage('Queue failure.');
+
+            $action->execute($request);
+        } finally {
+            $container->forgetInstance(Dispatcher::class);
+        }
+
+        Log::shouldNotHaveReceived('warning');
     }
 }
