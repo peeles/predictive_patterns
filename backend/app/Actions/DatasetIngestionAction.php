@@ -13,9 +13,11 @@ use App\Services\Datasets\SchemaMapper;
 use App\Support\Filesystem\CsvCombiner;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use RuntimeException;
+use Throwable;
 
 class DatasetIngestionAction
 {
@@ -66,7 +68,7 @@ class DatasetIngestionAction
         }
 
         if ($dataset->source_type === 'url') {
-            IngestRemoteDataset::dispatch($dataset->id);
+            $this->dispatchRemoteIngestion($dataset);
 
             return $dataset;
         }
@@ -89,6 +91,46 @@ class DatasetIngestionAction
         }
 
         return $dataset;
+    }
+
+    private function dispatchRemoteIngestion(Dataset $dataset): void
+    {
+        try {
+            IngestRemoteDataset::dispatch($dataset->id);
+        } catch (Throwable $exception) {
+            if (! $this->shouldFallbackToSynchronousQueue($exception)) {
+                throw $exception;
+            }
+
+            Log::warning('Queue connection unavailable, ingesting remote dataset synchronously.', [
+                'dataset_id' => $dataset->id,
+                'queue_connection' => config('queue.default'),
+                'exception' => $exception,
+            ]);
+
+            IngestRemoteDataset::dispatchSync($dataset->id);
+        }
+    }
+
+    private function shouldFallbackToSynchronousQueue(Throwable $exception): bool
+    {
+        if (class_exists(\RedisException::class) && $exception instanceof \RedisException) {
+            return true;
+        }
+
+        $message = strtolower($exception->getMessage());
+
+        if ($message !== '' && str_contains($message, 'connection refused')) {
+            return true;
+        }
+
+        $previous = $exception->getPrevious();
+
+        if ($previous instanceof Throwable) {
+            return $this->shouldFallbackToSynchronousQueue($previous);
+        }
+
+        return false;
     }
 
     /**
