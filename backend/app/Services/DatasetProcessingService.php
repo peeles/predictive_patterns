@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Events\DatasetStatusChanged;
+use App\Exceptions\QueueConnectionException;
 use App\Jobs\CompleteDatasetIngestion;
 use App\Jobs\NotifyDatasetReady;
 use App\Models\Dataset;
@@ -10,6 +11,7 @@ use App\Repositories\DatasetRepositoryInterface;
 use App\Services\Datasets\DatasetRepository;
 use App\Services\Datasets\FeatureGenerator;
 use App\Services\Datasets\SchemaMapper;
+use App\Support\Queue\QueueConnectionDiagnostics;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
@@ -188,23 +190,19 @@ class DatasetProcessingService
                 $additionalMetadata
             );
         } catch (Throwable $exception) {
-            if ($this->shouldFallbackToSynchronousQueue($exception)) {
-                Log::warning('Queue connection unavailable, finalising dataset synchronously.', [
-                    'dataset_id' => $dataset->getKey(),
-                    'queue_connection' => $connection,
-                    'queue_driver' => $driver,
-                    'exception' => $exception,
-                ]);
-
-                $dataset->refresh();
-
-                $finalised = $this->finalise($dataset, $schemaMapping, $additionalMetadata);
-                $this->dispatchReadyNotificationSynchronously($finalised);
-
-                return $finalised;
+            if (! $this->isQueueConnectionIssue($exception)) {
+                throw $exception;
             }
 
-            throw $exception;
+            $diagnostics = QueueConnectionDiagnostics::describe($connection);
+
+            Log::error('Failed to queue dataset finalisation due to queue connection failure.', array_merge(
+                ['dataset_id' => $dataset->getKey(), 'queue_driver' => $driver],
+                $diagnostics,
+                ['exception' => $exception]
+            ));
+
+            throw QueueConnectionException::forConnection($connection, $exception);
         }
 
         $this->dispatchProgress($dataset, 0.0);
@@ -240,7 +238,7 @@ class DatasetProcessingService
         return $bus instanceof BusFake;
     }
 
-    private function shouldFallbackToSynchronousQueue(Throwable $exception): bool
+    private function isQueueConnectionIssue(Throwable $exception): bool
     {
         if (class_exists(RedisException::class) && $exception instanceof RedisException) {
             return true;
@@ -248,17 +246,20 @@ class DatasetProcessingService
 
         $message = strtolower($exception->getMessage());
 
-        if ($message !== '' && str_contains($message, 'connection refused')) {
+        if ($message !== '' && (
+            str_contains($message, 'connection refused')
+            || str_contains($message, 'failed to connect')
+            || str_contains($message, 'could not connect')
+            || str_contains($message, 'connection timed out')
+        )) {
             return true;
         }
 
         $previous = $exception->getPrevious();
 
-        if ($previous instanceof Throwable) {
-            return $this->shouldFallbackToSynchronousQueue($previous);
-        }
-
-        return false;
+        return $previous instanceof Throwable
+            ? $this->isQueueConnectionIssue($previous)
+            : false;
     }
 
     /**

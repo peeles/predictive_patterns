@@ -37,6 +37,7 @@ class AppServiceProvider extends ServiceProvider
 
         $this->app->bind(DatasetRepositoryInterface::class, EloquentDatasetRepository::class);
         $this->app->bind(PredictiveModelRepositoryInterface::class, EloquentPredictiveModelRepository::class);
+
     }
 
     /**
@@ -242,4 +243,5 @@ class AppServiceProvider extends ServiceProvider
             return Limit::perMinute(10);
         });
     }
+
 }

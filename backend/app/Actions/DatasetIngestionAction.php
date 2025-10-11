@@ -3,6 +3,7 @@
 namespace App\Actions;
 
 use App\Enums\DatasetStatus;
+use App\Exceptions\QueueConnectionException;
 use App\Events\DatasetStatusChanged;
 use App\Http\Requests\DatasetIngestRequest;
 use App\Jobs\IngestRemoteDataset;
@@ -11,6 +12,7 @@ use App\Models\User;
 use App\Services\DatasetProcessingService;
 use App\Services\Datasets\SchemaMapper;
 use App\Support\Filesystem\CsvCombiner;
+use App\Support\Queue\QueueConnectionDiagnostics;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Log;
@@ -95,24 +97,28 @@ class DatasetIngestionAction
 
     private function dispatchRemoteIngestion(Dataset $dataset): void
     {
+        $connection = (string) config('queue.default', 'sync');
+
         try {
             IngestRemoteDataset::dispatch($dataset->id);
         } catch (Throwable $exception) {
-            if (! $this->shouldFallbackToSynchronousQueue($exception)) {
+            if (! $this->isQueueConnectionIssue($exception)) {
                 throw $exception;
             }
 
-            Log::warning('Queue connection unavailable, ingesting remote dataset synchronously.', [
-                'dataset_id' => $dataset->id,
-                'queue_connection' => config('queue.default'),
-                'exception' => $exception,
-            ]);
+            $diagnostics = QueueConnectionDiagnostics::describe($connection);
 
-            IngestRemoteDataset::dispatchSync($dataset->id);
+            Log::error('Failed to queue remote dataset ingestion due to queue connection failure.', array_merge(
+                ['dataset_id' => $dataset->id],
+                $diagnostics,
+                ['exception' => $exception]
+            ));
+
+            throw QueueConnectionException::forConnection($connection, $exception);
         }
     }
 
-    private function shouldFallbackToSynchronousQueue(Throwable $exception): bool
+    private function isQueueConnectionIssue(Throwable $exception): bool
     {
         if (class_exists(\RedisException::class) && $exception instanceof \RedisException) {
             return true;
@@ -126,11 +132,9 @@ class DatasetIngestionAction
 
         $previous = $exception->getPrevious();
 
-        if ($previous instanceof Throwable) {
-            return $this->shouldFallbackToSynchronousQueue($previous);
-        }
-
-        return false;
+        return $previous instanceof Throwable
+            ? $this->isQueueConnectionIssue($previous)
+            : false;
     }
 
     /**
