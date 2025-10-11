@@ -69,7 +69,7 @@ return [
         ],
 
         'training' => [
-            'driver' => env('TRAINING_QUEUE_DRIVER', 'redis-fallback'),
+            'driver' => env('TRAINING_QUEUE_DRIVER', env('QUEUE_CONNECTION', 'redis')),
             'connection' => env('TRAINING_QUEUE_CONNECTION'),
             'queue' => env('TRAINING_QUEUE', 'training'),
             'retry_after' => (int) env('TRAINING_QUEUE_RETRY_AFTER', 1800),
@@ -78,7 +78,7 @@ return [
         ],
 
         'redis' => [
-            'driver' => env('REDIS_QUEUE_DRIVER', 'redis-fallback'),
+            'driver' => 'redis',
             'connection' => 'queue', // Changed from 'default' to 'queue'
             'queue' => env('REDIS_QUEUE', 'default'),
             'retry_after' => (int) env('REDIS_QUEUE_RETRY_AFTER', 90),
@@ -87,7 +87,7 @@ return [
         ],
 
         'broadcasts' => [
-            'driver' => env('BROADCAST_QUEUE_DRIVER', 'redis-fallback'),
+            'driver' => env('BROADCAST_QUEUE_DRIVER', 'redis'),
             'connection' => env('REDIS_QUEUE_CONNECTION', 'default'),
             'queue' => 'broadcasts',
             'retry_after' => 30,
