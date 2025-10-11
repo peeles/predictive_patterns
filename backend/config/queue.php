@@ -87,7 +87,7 @@ return [
         ],
 
         'broadcasts' => [
-            'driver' => 'redis',
+            'driver' => env('BROADCAST_QUEUE_DRIVER', 'redis'),
             'connection' => env('REDIS_QUEUE_CONNECTION', 'default'),
             'queue' => 'broadcasts',
             'retry_after' => 30,

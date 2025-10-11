@@ -6,6 +6,7 @@ use App\Actions\DatasetIngestionAction;
 use App\Events\DatasetStatusChanged;
 use App\Http\Requests\DatasetIngestRequest;
 use App\Jobs\IngestRemoteDataset;
+use App\Models\Dataset;
 use App\Models\User;
 use App\Services\DatasetProcessingService;
 use App\Services\Datasets\SchemaMapper;
@@ -88,7 +89,7 @@ class DatasetIngestionActionTest extends TestCase
         });
     }
 
-    public function test_execute_falls_back_to_sync_when_queue_connection_refused(): void
+    public function test_execute_throws_queue_connection_exception_when_queue_connection_refused(): void
     {
         Storage::fake('local');
         Event::fake();
@@ -108,19 +109,11 @@ class DatasetIngestionActionTest extends TestCase
             ->once()
             ->andThrow(new RuntimeException('Redis connection refused'));
 
-        $dispatchedSync = false;
-
-        $dispatcher->shouldReceive('dispatchSync')
-            ->once()
-            ->andReturnUsing(function ($job) use (&$dispatchedSync) {
-                $this->assertInstanceOf(IngestRemoteDataset::class, $job);
-                $dispatchedSync = true;
-
-                return null;
-            });
-
         $container = app();
         $container->instance(Dispatcher::class, $dispatcher);
+
+        $this->expectException(\App\Exceptions\QueueConnectionException::class);
+        $this->expectExceptionMessage('"redis" queue connection');
 
         try {
             /** @var DatasetIngestRequest $request */
@@ -134,21 +127,25 @@ class DatasetIngestionActionTest extends TestCase
             $request->setUserResolver(fn () => User::factory()->create());
             $request->validateResolved();
 
-            $dataset = $action->execute($request);
+            $action->execute($request);
+        } catch (\App\Exceptions\QueueConnectionException $exception) {
+            $dataset = Dataset::firstOrFail();
 
             $this->assertDatabaseHas('datasets', [
                 'id' => $dataset->id,
                 'status' => 'pending',
             ]);
 
-            $this->assertTrue($dispatchedSync);
-
-            Log::shouldHaveReceived('warning')->once()->with(
-                Mockery::type('string'),
+            Log::shouldHaveReceived('error')->once()->with(
+                'Failed to queue remote dataset ingestion due to queue connection failure.',
                 Mockery::on(function (array $context) use ($dataset) {
-                    return ($context['dataset_id'] ?? null) === $dataset->id;
+                    return ($context['dataset_id'] ?? null) === $dataset->id
+                        && ($context['connection'] ?? null) === config('queue.default')
+                        && ($context['host'] ?? null) === config('database.redis.queue.host');
                 })
             );
+
+            throw $exception;
         } finally {
             $container->forgetInstance(Dispatcher::class);
         }
@@ -197,6 +194,6 @@ class DatasetIngestionActionTest extends TestCase
             $container->forgetInstance(Dispatcher::class);
         }
 
-        Log::shouldNotHaveReceived('warning');
+        Log::shouldNotHaveReceived('error');
     }
 }
