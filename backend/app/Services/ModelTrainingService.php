@@ -2042,10 +2042,21 @@ class ModelTrainingService
     private function sampleDataset(array $samples, array $labels, float $sampleRate = 0.5): array
     {
         $count = count($samples);
-        $sampleSize = (int) ceil($count * $sampleRate);
+        if ($count === 0) {
+            return [
+                'samples' => [],
+                'labels' => [],
+            ];
+        }
 
-        // Random sampling
-        $indices = array_rand(range(0, $count - 1), $sampleSize);
+        $sampleSize = (int) ceil($count * $sampleRate);
+        $sampleSize = max(1, min($count, $sampleSize));
+
+        // Random sampling without allocating an additional index array
+        $indices = array_rand($samples, $sampleSize);
+        if (!is_array($indices)) {
+            $indices = [$indices];
+        }
 
         $sampledSamples = [];
         $sampledLabels = [];
