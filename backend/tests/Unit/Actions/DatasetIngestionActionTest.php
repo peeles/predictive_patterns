@@ -4,8 +4,8 @@ namespace Tests\Unit\Actions;
 
 use App\Actions\DatasetIngestionAction;
 use App\Events\DatasetStatusChanged;
+use App\Exceptions\QueueConnectionException;
 use App\Http\Requests\DatasetIngestRequest;
-use App\Jobs\IngestRemoteDataset;
 use App\Models\Dataset;
 use App\Models\User;
 use App\Services\DatasetProcessingService;
@@ -112,7 +112,7 @@ class DatasetIngestionActionTest extends TestCase
         $container = app();
         $container->instance(Dispatcher::class, $dispatcher);
 
-        $this->expectException(\App\Exceptions\QueueConnectionException::class);
+        $this->expectException(QueueConnectionException::class);
         $this->expectExceptionMessage('"redis" queue connection');
 
         try {
@@ -128,7 +128,7 @@ class DatasetIngestionActionTest extends TestCase
             $request->validateResolved();
 
             $action->execute($request);
-        } catch (\App\Exceptions\QueueConnectionException $exception) {
+        } catch (QueueConnectionException $exception) {
             $dataset = Dataset::firstOrFail();
 
             $this->assertDatabaseHas('datasets', [
