@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Dataset;
+use Illuminate\Support\Facades\Storage;
 
 class ChunkedModelTrainingService
 {
@@ -11,8 +12,17 @@ class ChunkedModelTrainingService
     public function supportsChunkedTraining(Dataset $dataset): bool
     {
         // Check if dataset is large enough to benefit from chunking
-        $path = storage_path('app/' . $dataset->file_path);
-        $size = filesize($path);
+        if ($dataset->file_path === null) {
+            return false;
+        }
+
+        $disk = Storage::disk('local');
+
+        if (!$disk->exists($dataset->file_path)) {
+            return false;
+        }
+
+        $size = $disk->size($dataset->file_path);
 
         // Use chunking for files > 50MB
         return $size > 50 * 1024 * 1024;
