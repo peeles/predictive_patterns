@@ -154,9 +154,17 @@ class ModelStatusService
                 $decoded = json_decode($cached, true);
 
                 if (is_array($decoded)) {
+                    $progress = Arr::get($decoded, 'progress');
+
+                    if (is_numeric($progress)) {
+                        $progress = (float) $progress;
+                    } elseif ($progress !== null) {
+                        $progress = null;
+                    }
+
                     return [
                         'state' => Arr::get($decoded, 'state'),
-                        'progress' => Arr::get($decoded, 'progress'),
+                        'progress' => $progress,
                         'updated_at' => Arr::get($decoded, 'updated_at'),
                         'message' => Arr::get($decoded, 'message'),
                     ];
