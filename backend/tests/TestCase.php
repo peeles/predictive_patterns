@@ -33,6 +33,7 @@ abstract class TestCase extends BaseTestCase
             'database.default' => 'sqlite',
             'database.connections.sqlite.database' => env('DB_DATABASE', ':memory:'),
             'database.connections.sqlite.foreign_key_constraints' => env('DB_FOREIGN_KEYS', true),
+            'cache.default' => 'array',
             'api.rate_limits' => [
                 Role::Admin->value => 1000,
                 Role::Analyst->value => 600,
