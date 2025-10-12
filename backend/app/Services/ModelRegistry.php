@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Enums\ModelStatus;
 use App\Models\PredictiveModel;
 use App\Repositories\PredictiveModelRepositoryInterface;
+use Throwable;
 use App\Support\DatabaseTransactionHelper;
 
 class ModelRegistry
@@ -24,13 +25,16 @@ class ModelRegistry
             ->first();
     }
 
+    /**
+     * @throws Throwable
+     */
     public function activate(PredictiveModel $model): void
     {
         DatabaseTransactionHelper::runWithoutNestedTransaction(function () use ($model): void {
             $this->models->query()
                 ->where('tag', $model->tag)
                 ->when($model->area !== null, fn ($query) => $query->where('area', $model->area))
-                ->where('id', '!=', $model->getKey())
+                ->whereKeyNot($model->getKey())
                 ->update(['status' => ModelStatus::Inactive->value]);
 
             $model->status = ModelStatus::Active;
