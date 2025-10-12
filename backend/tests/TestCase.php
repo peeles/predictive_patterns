@@ -29,6 +29,14 @@ abstract class TestCase extends BaseTestCase
     {
         parent::setUp();
 
+        // Force close any open transactions
+        if ($this->app->bound('db')) {
+            $pdo = $this->app['db']->connection()->getPdo();
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+        }
+
         config([
             'database.default' => 'sqlite',
             'database.connections.sqlite.database' => env('DB_DATABASE', ':memory:'),
@@ -40,6 +48,19 @@ abstract class TestCase extends BaseTestCase
                 Role::Viewer->value => 300,
             ],
         ]);
+    }
+
+    protected function tearDown(): void
+    {
+        // Clean up transactions after each test
+        if ($this->app->bound('db')) {
+            $pdo = $this->app['db']->connection()->getPdo();
+            while ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+        }
+
+        parent::tearDown();
     }
 
     protected function issueTokensForRole(Role $role = Role::Admin): array
