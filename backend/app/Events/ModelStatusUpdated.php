@@ -25,26 +25,28 @@ class ModelStatusUpdated implements ShouldBroadcast
      * @param array<string, mixed>|null $trainingMetrics
      */
     public function __construct(
-        public readonly string $modelId,
-        public readonly string $state,
-        public readonly ?float $progress,
-        public readonly string $updatedAt,
+        public int $modelId,
+        public string $status,
+        public int $progress,
         ?string $message = null,
-        public readonly ?string $status = null,
+        public ?array $metrics = null,
+        public ?string $errorMessage = null,
         public readonly ?array $trainingMetrics = null,
-        public readonly ?string $errorMessage = null,
     ) {
         $this->message = $message;
     }
 
-    public function broadcastOn(): PrivateChannel
+    public function broadcastOn(): array
     {
-        return new PrivateChannel(sprintf('models.%s.status', $this->modelId));
+        return [
+            new PrivateChannel("model.{$this->modelId}"),
+            new PrivateChannel('models'),
+        ];
     }
 
     public function broadcastAs(): string
     {
-        return 'ModelStatusUpdated';
+        return 'status.updated';
     }
 
     /**
@@ -63,13 +65,13 @@ class ModelStatusUpdated implements ShouldBroadcast
     {
         return [
             'model_id' => $this->modelId,
-            'state' => $this->state,
-            'status' => $this->status ?? $this->state,
+            'status' => $this->status,
             'progress' => $this->progress,
-            'updated_at' => $this->updatedAt,
             'message' => $this->message,
-            'training_metrics' => $this->trainingMetrics,
+            'metrics' => $this->metrics,
             'error_message' => $this->errorMessage,
+            'timestamp' => now()->toIso8601String(),
+            'training_metrics' => $this->trainingMetrics,
         ];
     }
 }
