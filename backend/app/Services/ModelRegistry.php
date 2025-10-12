@@ -5,7 +5,7 @@ namespace App\Services;
 use App\Enums\ModelStatus;
 use App\Models\PredictiveModel;
 use App\Repositories\PredictiveModelRepositoryInterface;
-use Illuminate\Support\Facades\DB;
+use App\Support\DatabaseTransactionHelper;
 
 class ModelRegistry
 {
@@ -26,7 +26,7 @@ class ModelRegistry
 
     public function activate(PredictiveModel $model): void
     {
-        DB::transaction(function () use ($model): void {
+        DatabaseTransactionHelper::runWithoutNestedTransaction(function () use ($model): void {
             $this->models->query()
                 ->where('tag', $model->tag)
                 ->when($model->area !== null, fn ($query) => $query->where('area', $model->area))

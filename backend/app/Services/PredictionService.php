@@ -12,7 +12,7 @@ use App\Models\User;
 use App\Support\Broadcasting\BroadcastDispatcher;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Contracts\Bus\Dispatcher;
-use Illuminate\Support\Facades\DB;
+use App\Support\DatabaseTransactionHelper;
 use Illuminate\Support\Str;
 
 class PredictionService
@@ -27,7 +27,7 @@ class PredictionService
      */
     public function queuePrediction(PredictiveModel $model, ?Dataset $dataset, array $parameters, bool $generateTiles, ?Authenticatable $user = null, ?array $metadata = null): Prediction
     {
-        return DB::transaction(function () use ($model, $dataset, $parameters, $generateTiles, $user, $metadata): Prediction {
+        return DatabaseTransactionHelper::runWithoutNestedTransaction(function () use ($model, $dataset, $parameters, $generateTiles, $user, $metadata): Prediction {
             $prediction = new Prediction([
                 'id' => (string) Str::uuid(),
                 'status' => PredictionStatus::Queued,
