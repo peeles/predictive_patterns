@@ -69,8 +69,12 @@ class EvaluateModelJob implements ShouldQueue
         $model = $models->findOrFail($this->modelId);
         $metadata = $model->metadata ?? [];
 
-        $statusService->markProgress($model->id, 'evaluating', 5.0);
-        $this->updateProgress($model->id, 'evaluating', 5.0);
+        $this->progressModel = $model;
+        $this->progressEntityId = $model->id;
+        $this->progressStage = 'evaluating';
+
+        $statusService->markProgress($model->id, 'evaluating', 5.0, 'Preparing evaluation run');
+        $this->updateProgress(5, 'Preparing evaluation run');
 
         $dataset = null;
         $metrics = $this->metrics;
@@ -106,16 +110,17 @@ class EvaluateModelJob implements ShouldQueue
                 static fn ($value): bool => is_array($value)
             ));
 
-            $statusService->markProgress($model->id, 'evaluating', 55.0);
-            $this->updateProgress($model->id, 'evaluating', 55.0);
+            $statusService->markProgress($model->id, 'evaluating', 55.0, 'Recording evaluation metrics');
+            $this->updateProgress(55, 'Recording evaluation metrics');
 
             $model->metadata = $metadata;
             $model->save();
 
-            $statusService->markProgress($model->id, 'evaluating', 85.0);
-            $this->updateProgress($model->id, 'evaluating', 85.0);
+            $statusService->markProgress($model->id, 'evaluating', 85.0, 'Finalising evaluation summary');
+            $this->updateProgress(85, 'Finalising evaluation summary');
             $statusService->markIdle($model->id);
-            $this->updateProgress($model->id, 'evaluating', 100.0, 'Evaluation complete');
+            $accuracy = is_array($metrics) ? ($metrics['accuracy'] ?? null) : null;
+            $this->updateProgress(100, 'Evaluation complete', ['accuracy' => $accuracy]);
         } catch (Throwable $exception) {
             Log::error('Failed to evaluate model', [
                 'model_id' => $model->id,
@@ -126,7 +131,7 @@ class EvaluateModelJob implements ShouldQueue
             ]);
 
             $statusService->markFailed($model->id, $exception->getMessage());
-            $this->updateProgress($model->id, 'evaluating', 100.0, $exception->getMessage());
+            $this->updateProgress(100, $exception->getMessage());
 
             throw $exception;
         }
