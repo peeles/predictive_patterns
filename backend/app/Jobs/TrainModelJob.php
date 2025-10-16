@@ -24,6 +24,7 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\Middleware\RateLimited;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Log;
 use Random\RandomException;
 use Throwable;
@@ -122,8 +123,6 @@ class TrainModelJob implements ShouldQueue, ShouldBeUnique, ShouldBeAuthorized
      */
     public function handle(ModelTrainingService $trainingService, ModelStatusService $statusService): void
     {
-        $this->recordQueueProgress(0.0);
-
         $run = TrainingRun::query()->with('model')->findOrFail($this->trainingRunId);
         $model = $run->model;
 
@@ -132,36 +131,63 @@ class TrainModelJob implements ShouldQueue, ShouldBeUnique, ShouldBeAuthorized
             return;
         }
 
+        $this->progressRun = $run;
+        $this->progressModel = $model;
+        $this->progressEntityId = $model->id;
+        $this->progressStage = 'training';
+
+        $effectiveHyperparameters = $this->hyperparameters ?? $run->hyperparameters ?? [];
+
         $run->fill([
             'status' => TrainingStatus::Running,
             'started_at' => now(),
             'error_message' => null,
-            'hyperparameters' => $this->hyperparameters ?? $run->hyperparameters,
+            'hyperparameters' => $effectiveHyperparameters,
         ])->save();
 
         $model->fill([
             'status' => ModelStatus::Training,
         ])->save();
 
-        $statusService->markProgress($model->id, 'training', 5.0, 'Preparing training run');
-        $this->updateProgress($model->id, 'training', 5.0, 'Preparing training run');
-        $this->recordQueueProgress(5.0);
+        $this->notifyProgressStage($statusService, $model, 0);
+        $this->notifyProgressStage($statusService, $model, 5);
+        $this->notifyProgressStage($statusService, $model, 15);
+        $this->notifyProgressStage($statusService, $model, 25);
+
+        $totalEpochs = $this->resolveTotalEpochsFromHyperparameters($effectiveHyperparameters);
+        $this->notifyProgressStage($statusService, $model, 35);
+        $this->notifyProgressStage($statusService, $model, 45);
 
         try {
             $result = $trainingService->train(
                 $run,
                 $model,
-                $this->hyperparameters ?? $run->hyperparameters ?? [],
-                function (float $progress, ?string $message = null) use ($statusService, $model): void {
-                    $statusService->markProgress($model->id, 'training', $progress, $message);
-                    $this->updateProgress($model->id, 'training', $progress, $message);
+                $effectiveHyperparameters,
+                function (float $progress, ?string $message = null) use ($statusService, $model, $totalEpochs): void {
+                    $normalised = (int) round($progress);
+                    $resolvedMessage = $message ?? $this->defaultProgressMessage($normalised);
+                    $epochMetrics = $this->buildEpochMetrics($normalised, $totalEpochs);
+
+                    $statusService->markProgress($model->id, 'training', $progress, $resolvedMessage);
+                    $this->updateProgress($normalised, $resolvedMessage, $epochMetrics);
                     $this->recordQueueProgress($progress);
                 }
             );
 
-            $statusService->markProgress($model->id, 'training', 95.0, 'Finalizing training results');
-            $this->updateProgress($model->id, 'training', 95.0, 'Finalizing training results');
-            $this->recordQueueProgress(95.0);
+            $this->notifyProgressStage(
+                $statusService,
+                $model,
+                75,
+                null,
+                $this->buildEpochMetrics(75, $totalEpochs)
+            );
+            $this->notifyProgressStage(
+                $statusService,
+                $model,
+                95,
+                null,
+                $this->buildEpochMetrics(95, $totalEpochs)
+            );
             $metrics = $result['metrics'];
             $metadata = array_merge($model->metadata ?? [], $result['metadata']);
 
@@ -181,12 +207,19 @@ class TrainModelJob implements ShouldQueue, ShouldBeUnique, ShouldBeAuthorized
                 'hyperparameters' => $result['hyperparameters'],
             ])->save();
 
+            $finalEpochs = $this->resolveTotalEpochsFromHyperparameters($result['hyperparameters'] ?? $effectiveHyperparameters);
+            $this->notifyProgressStage(
+                $statusService,
+                $model,
+                100,
+                null,
+                $this->buildFinalMetricsForProgress($metrics, $finalEpochs)
+            );
+
             $statusService->markIdle($model->id);
             $model->refresh();
 
             event(new ModelTrained($model));
-            $this->updateProgress($model->id, 'training', 100.0, 'Training complete');
-            $this->recordQueueProgress(100.0);
         } catch (Throwable $exception) {
             $run->fill([
                 'status' => TrainingStatus::Failed,
@@ -208,7 +241,7 @@ class TrainModelJob implements ShouldQueue, ShouldBeUnique, ShouldBeAuthorized
             ]);
 
             $statusService->markFailed($model->id, $exception->getMessage());
-            $this->updateProgress($model->id, 'training', 100.0, $exception->getMessage());
+            $this->updateProgress(100, $exception->getMessage());
 
             $this->recordQueueProgress(100.0);
 
@@ -241,10 +274,94 @@ class TrainModelJob implements ShouldQueue, ShouldBeUnique, ShouldBeAuthorized
         }
 
         if (method_exists($job, 'setProgress')) {
-            $normalized = (int) round($progress);
-            $normalized = max(0, min(100, $normalized));
+            $normalised = (int) round($progress);
+            $normalised = max(0, min(100, $normalised));
 
-            $job->setProgress($normalized);
+            $job->setProgress($normalised);
         }
+    }
+
+    private function notifyProgressStage(ModelStatusService $statusService, PredictiveModel $model, int $progress, ?string $message = null, ?array $metrics = null): void
+    {
+        $resolvedMessage = $message ?? $this->defaultProgressMessage($progress);
+
+        $statusService->markProgress($model->id, 'training', (float) $progress, $resolvedMessage);
+        $this->updateProgress($progress, $resolvedMessage, $metrics);
+        $this->recordQueueProgress((float) $progress);
+    }
+
+    /**
+     * @param array<string, mixed> $hyperparameters
+     */
+    private function resolveTotalEpochsFromHyperparameters(array $hyperparameters): ?int
+    {
+        foreach (['epochs', 'max_epochs', 'n_estimators', 'iterations'] as $key) {
+            $value = Arr::get($hyperparameters, $key);
+
+            if (is_numeric($value)) {
+                $cast = (int) $value;
+
+                if ($cast > 0) {
+                    return $cast;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private function buildEpochMetrics(int $progress, ?int $totalEpochs): ?array
+    {
+        if ($totalEpochs === null || $totalEpochs <= 0 || $progress < 25) {
+            return null;
+        }
+
+        if ($progress >= 100) {
+            return [
+                'current_epoch' => $totalEpochs,
+                'total_epochs' => $totalEpochs,
+                'loss' => null,
+                'accuracy' => null,
+            ];
+        }
+
+        $progressWindow = max(1, 70);
+        $relative = max(0, min(1, ($progress - 25) / $progressWindow));
+        $currentEpoch = (int) round($totalEpochs * $relative);
+
+        if ($currentEpoch < 1) {
+            $currentEpoch = 1;
+        }
+
+        if ($currentEpoch > $totalEpochs) {
+            $currentEpoch = $totalEpochs;
+        }
+
+        return [
+            'current_epoch' => $currentEpoch,
+            'total_epochs' => $totalEpochs,
+            'loss' => null,
+            'accuracy' => null,
+        ];
+    }
+
+    /**
+     * @param array<string, mixed>|null $metrics
+     */
+    private function buildFinalMetricsForProgress(?array $metrics, ?int $totalEpochs): ?array
+    {
+        $loss = Arr::get($metrics, 'loss', Arr::get($metrics, 'best_loss'));
+        $accuracy = Arr::get($metrics, 'accuracy', Arr::get($metrics, 'best_accuracy'));
+
+        if ($loss === null && $accuracy === null && $totalEpochs === null) {
+            return null;
+        }
+
+        return [
+            'current_epoch' => $totalEpochs,
+            'total_epochs' => $totalEpochs,
+            'loss' => $loss,
+            'accuracy' => $accuracy,
+        ];
     }
 }

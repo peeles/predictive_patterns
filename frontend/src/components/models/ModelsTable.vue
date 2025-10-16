@@ -59,7 +59,12 @@
                             No models available.
                         </td>
                     </tr>
-                    <tr v-for="model in modelStore.models" v-else :key="model.id" class="odd:bg-white even:bg-stone-50">
+                    <tr
+                        v-for="model in modelStore.models"
+                        v-else
+                        :key="model.id"
+                        class="odd:bg-white even:bg-stone-50"
+                    >
                         <td class="px-6 py-3 text-stone-900">
                             <div class="flex flex-col">
                                 <span class="font-medium">{{ model.name }}</span>
@@ -73,7 +78,10 @@
                         <td class="px-6 py-3">{{ formatMetric(model.metrics?.recall) }}</td>
                         <td class="px-6 py-3">{{ formatMetric(model.metrics?.f1) }}</td>
                         <td class="px-6 py-3 text-stone-600">{{ formatDate(model.lastTrainedAt) }}</td>
-                        <td v-if="isAdmin" class="px-6 py-3">
+                        <td
+                            v-if="isAdmin"
+                            class="px-6 py-3"
+                        >
                             <div class="flex flex-col gap-2">
                                 <div
                                     :class="statusCardClass(modelStatusSnapshot(model.id))"

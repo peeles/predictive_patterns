@@ -1,6 +1,7 @@
 <?php
 
 $defaultOrigins = [
+    'http://predictive-patterns.test',
     'http://localhost:3000',
     'http://localhost:5173',
     'http://127.0.0.1:3000',
