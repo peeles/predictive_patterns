@@ -39,13 +39,13 @@
                         <dt class="text-xs font-semibold uppercase tracking-wide text-stone-500">Identifier</dt>
                         <dd class="mt-1">
                             <div class="flex flex-wrap items-center gap-2">
-                                <span class="break-all font-mono text-xs text-stone-600">{{ dataset.id }}</span>
+                                <span class="break-all font-mono text-xs text-stone-600">{{ dataset.data.id }}</span>
                                 <button
                                     class="inline-flex items-center gap-1 rounded-full border border-stone-300 px-2 py-0.5 text-[11px] font-medium text-stone-600 transition hover:bg-stone-100 focus-visible:outline  focus-visible:outline-offset-2 focus-visible:outline-blue-500"
                                     type="button"
                                     @click="copyIdentifier"
                                 >
-                                    <span>{{ copiedId === dataset.id ? 'Copied' : 'Copy ID' }}</span>
+                                    <span>{{ copiedId === dataset.data.id ? 'Copied' : 'Copy ID' }}</span>
                                 </button>
                             </div>
                         </dd>
@@ -53,30 +53,32 @@
                     <div>
                         <dt class="text-xs font-semibold uppercase tracking-wide text-stone-500">Status</dt>
                         <dd class="mt-1">
-                            <span :class="datasetStatusClasses(dataset.status)">{{ datasetStatusLabel(dataset.status) }}</span>
+                            <span :class="datasetStatusClasses(dataset.data.status)">{{ datasetStatusLabel(dataset.data.status) }}</span>
                         </dd>
                     </div>
                     <div>
                         <dt class="text-xs font-semibold uppercase tracking-wide text-stone-500">Source</dt>
-                        <dd class="mt-1">{{ formatDatasetSource(dataset.source_type) }}</dd>
+                        <dd class="mt-1">{{ formatDatasetSource(dataset.data.source_type) }}</dd>
                     </div>
-                    <div v-if="dataset.source_uri">
+                    <div v-if="dataset.data.source_uri">
                         <dt class="text-xs font-semibold uppercase tracking-wide text-stone-500">Source URI</dt>
                         <dd class="mt-1 break-all text-blue-600">
-                            <a :href="dataset.source_uri" class="hover:underline" target="_blank" rel="noopener">{{ dataset.source_uri }}</a>
+                            <a :href="dataset.data.source_uri" class="hover:underline" target="_blank" rel="noopener">
+                                {{ dataset.data.source_uri }}
+                            </a>
                         </dd>
                     </div>
                     <div>
                         <dt class="text-xs font-semibold uppercase tracking-wide text-stone-500">Records</dt>
-                        <dd class="mt-1">{{ formatNumber(dataset.features_count) }}</dd>
+                        <dd class="mt-1">{{ formatNumber(dataset.data.features_count) }}</dd>
                     </div>
                     <div>
                         <dt class="text-xs font-semibold uppercase tracking-wide text-stone-500">Uploaded</dt>
-                        <dd class="mt-1">{{ formatDateTime(dataset.created_at) }}</dd>
+                        <dd class="mt-1">{{ formatDateTime(dataset.data.created_at) }}</dd>
                     </div>
                     <div>
                         <dt class="text-xs font-semibold uppercase tracking-wide text-stone-500">Processed</dt>
-                        <dd class="mt-1">{{ formatDateTime(dataset.ingested_at) }}</dd>
+                        <dd class="mt-1">{{ formatDateTime(dataset.data.ingested_at) }}</dd>
                     </div>
                     <div v-if="rowCount !== null">
                         <dt class="text-xs font-semibold uppercase tracking-wide text-stone-500">Previewed rows</dt>
@@ -91,9 +93,16 @@
                     </ul>
                 </div>
 
-                <div v-if="dataset.description" class="rounded-lg border border-stone-200 bg-stone-50 p-4">
-                    <h3 class="text-sm font-semibold text-stone-900">Description</h3>
-                    <p class="mt-2 whitespace-pre-wrap text-sm text-stone-600">{{ dataset.description }}</p>
+                <div
+                    v-if="dataset.description"
+                    class="rounded-lg border border-stone-200 bg-stone-50 p-4"
+                >
+                    <h3 class="text-sm font-semibold text-stone-900">
+                        Description
+                    </h3>
+                    <p class="mt-2 whitespace-pre-wrap text-sm text-stone-600">
+                        {{ dataset.description }}
+                    </p>
                 </div>
             </div>
         </section>
@@ -169,8 +178,8 @@ let copyTimer = null
 const datasetId = computed(() => route.params.id)
 const excludedPreviewKeys = ['uuid', 'datasetid']
 
-const previewHeaders = computed(() => dataset.value?.metadata?.headers ?? [])
-const previewRows = computed(() => dataset.value?.metadata?.preview_rows ?? [])
+const previewHeaders = computed(() => dataset.value?.data.metadata?.headers ?? [])
+const previewRows = computed(() => dataset.value?.data.metadata?.preview_rows ?? [])
 const filteredPreviewHeaders = computed(() => {
     if (!Array.isArray(previewHeaders.value)) return []
 
@@ -220,16 +229,16 @@ const paginationMeta = computed(() => ({
     current_page: currentPage.value,
 }))
 const sourceFiles = computed(() => {
-    const files = dataset.value?.metadata?.source_files
+    const files = dataset.value?.data.metadata?.source_files
     return Array.isArray(files) ? files : []
 })
 const rowCount = computed(() => {
     if (!dataset.value) return null
-    const metadataCount = dataset.value.metadata?.row_count
+    const metadataCount = dataset.value.data.metadata?.row_count
     if (typeof metadataCount === 'number') {
         return metadataCount
     }
-    return dataset.value.features_count ?? 0
+    return dataset.value.data.features_count ?? 0
 })
 
 async function fetchDataset() {
@@ -289,10 +298,10 @@ onBeforeUnmount(() => {
 })
 
 async function copyIdentifier() {
-    if (!dataset.value?.id) return
+    if (!dataset.value?.data.id) return
     try {
-        await navigator.clipboard.writeText(dataset.value.id)
-        copiedId.value = dataset.value.id
+        await navigator.clipboard.writeText(dataset.value.data.id)
+        copiedId.value = dataset.value.data.id
         if (copyTimer) {
             window.clearTimeout(copyTimer)
         }
