@@ -2,6 +2,7 @@
 
 namespace Database\Seeders;
 
+use App\Enums\Role;
 use App\Models\User;
 // use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
@@ -28,7 +29,7 @@ class DatabaseSeeder extends Seeder
                 'name' => 'Admin User',
                 'email_verified_at' => now(),
                 'password' => Hash::make($adminPassword),
-                'role' => 'admin',
+                'role' => Role::Admin,
             ]
         );
 
@@ -49,7 +50,7 @@ class DatabaseSeeder extends Seeder
                     'name' => 'Test User',
                     'email_verified_at' => now(),
                     'password' => Hash::make('TestUser123!'),
-                    'role' => 'user',
+                    'role' => Role::Analyst,
                 ]
             );
 
