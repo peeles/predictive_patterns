@@ -184,18 +184,23 @@ class ModelTrainingService
             $progressNotifier
         );
 
-        // Free memory from grid search classifiers
-        gc_collect_cycles();
-
         $bestParams = $gridSearch['best_hyperparameters'];
         $cvMetrics = $gridSearch['metrics'];
         $finalHyperparameters = array_merge($resolvedHyperparameters, $bestParams);
         unset($finalHyperparameters['search_grid']);
 
+        // Free memory from grid search after extracting needed values
+        unset($gridSearch);
+        gc_collect_cycles();
+
         $trainSamples = $trainRaw['samples'];
         $trainLabels = $trainRaw['labels'];
         $validationSamples = $validationRaw['samples'];
         $validationLabels = $validationRaw['labels'];
+
+        // Free memory from raw data structures after extraction
+        unset($trainRaw, $validationRaw);
+        gc_collect_cycles();
 
         $imputer = ImputerFactory::create($resolvedHyperparameters['imputation_strategy']);
         $imputer->fit($trainSamples);
