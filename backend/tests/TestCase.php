@@ -27,20 +27,17 @@ abstract class TestCase extends BaseTestCase
 {
     protected function setUp(): void
     {
+        // Set test configuration BEFORE parent::setUp() so RefreshDatabase uses correct DB
+        $_ENV['DB_CONNECTION'] = 'sqlite';
+        $_ENV['DB_DATABASE'] = ':memory:';
+        $_SERVER['DB_CONNECTION'] = 'sqlite';
+        $_SERVER['DB_DATABASE'] = ':memory:';
+        putenv('DB_CONNECTION=sqlite');
+        putenv('DB_DATABASE=:memory:');
+
         parent::setUp();
 
-        // Force close any open transactions
-        if ($this->app->bound('db')) {
-            $pdo = $this->app['db']->connection()->getPdo();
-            if ($pdo->inTransaction()) {
-                $pdo->rollBack();
-            }
-        }
-
         config([
-            'database.default' => 'sqlite',
-            'database.connections.sqlite.database' => env('DB_DATABASE', ':memory:'),
-            'database.connections.sqlite.foreign_key_constraints' => env('DB_FOREIGN_KEYS', true),
             'cache.default' => 'array',
             'api.rate_limits' => [
                 Role::Admin->value => 1000,
