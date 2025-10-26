@@ -94,18 +94,13 @@ class ModelTrainingService
 
         $columnMap = $this->resolveColumnMap($dataset);
 
-        $chunkedService = new ChunkedModelTrainingService();
-        if ($chunkedService->supportsChunkedTraining($dataset)) {
-            $chunkSize = $chunkedService->getOptimalChunkSize($dataset);
-            $this->notifyProgress($progressCallback, 5.0, "Large dataset detected. Using chunked training (chunk size: {$chunkSize})");
-
-            // Log for monitoring
-            Log::info('Using chunked training', [
-                'dataset_id' => $dataset->id,
-                'chunk_size' => $chunkSize,
-                'file_size' => filesize($path),
-            ]);
-        }
+        // Log dataset size for monitoring
+        $fileSize = filesize($path);
+        Log::info('Loading dataset for training', [
+            'dataset_id' => $dataset->id,
+            'file_size' => $fileSize,
+            'file_size_mb' => round($fileSize / 1024 / 1024, 2),
+        ]);
 
         $prepared = DatasetRowPreprocessor::prepareTrainingData($path, $columnMap);
         $buffer = $prepared['buffer'];
@@ -120,26 +115,52 @@ class ModelTrainingService
 
         $splits = $this->splitBufferedEntries($buffer, $resolvedHyperparameters['validation_split']);
 
+        // Free the original buffer after splitting
+        unset($buffer, $prepared);
+
         $this->notifyProgress($progressCallback, 40.0, 'Computed training splits and statistics');
 
         $trainRaw = $this->bufferToSamples($splits['train_buffer']);
 
+        // Free train buffer memory immediately
+        unset($splits['train_buffer']);
+
         if (memory_get_usage(true) > 500 * 1024 * 1024) { // If using > 500MB
+            $memoryBefore = memory_get_usage(true);
+
             Log::info('Dataset too large, sampling to 50%', [
-                'current_memory' => memory_get_usage(true),
+                'current_memory' => $memoryBefore,
                 'sample_count' => count($trainRaw['samples']),
             ]);
 
+            // Keep references to originals for cleanup
+            $originalSamples = $trainRaw['samples'];
+            $originalLabels = $trainRaw['labels'];
+
             $sampled = $this->sampleDataset(
-                $trainRaw['samples'],
-                $trainRaw['labels'],
+                $originalSamples,
+                $originalLabels,
                 0.5
             );
 
             $trainRaw = $sampled;
+
+            // Explicitly free memory from original large dataset
+            unset($originalSamples, $originalLabels, $sampled);
+            gc_collect_cycles();
+
+            Log::info('Memory freed after sampling', [
+                'memory_before' => $memoryBefore,
+                'memory_after' => memory_get_usage(true),
+                'memory_freed' => $memoryBefore - memory_get_usage(true),
+            ]);
         }
 
         $validationRaw = $this->bufferToSamples($splits['validation_buffer']);
+
+        // Free validation buffer and splits memory
+        unset($splits['validation_buffer'], $splits);
+        gc_collect_cycles();
 
         if ($trainRaw['samples'] === [] || $trainRaw['labels'] === []) {
             throw new RuntimeException('Cannot train a model without features.');
@@ -585,10 +606,27 @@ class ModelTrainingService
                 $report = $classification['report'];
                 $scores[] = $report['accuracy'];
                 $macroScores[] = $report['macro']['f1'];
+
+                // Free fold-specific memory to prevent accumulation
+                unset($split, $trainSamples, $trainLabels, $testSamples, $testLabels);
+                unset($imputer, $normalizer, $classifier, $predictions, $classification, $report, $statistics);
+
+                // Periodic garbage collection every 3 folds to prevent memory buildup
+                if ($fold > 0 && $fold % 3 === 0) {
+                    gc_collect_cycles();
+                }
             }
 
             $averageScore = $scores === [] ? 0.0 : array_sum($scores) / count($scores);
             $averageMacro = $macroScores === [] ? 0.0 : array_sum($macroScores) / count($macroScores);
+
+            // Clean up after each parameter combination
+            unset($scores, $macroScores);
+
+            // Run garbage collection after each grid parameter to free classifier memory
+            if ($index > 0 && $index % 2 === 0) {
+                gc_collect_cycles();
+            }
 
             $evaluations[] = [
                 'hyperparameters' => $params,
