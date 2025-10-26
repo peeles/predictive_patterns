@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use App\Services\Dataset\ColumnMapper;
 use Carbon\CarbonImmutable;
 use JsonException;
 use RuntimeException;
@@ -9,9 +10,24 @@ use SplTempFileObject;
 
 class DatasetRowPreprocessor
 {
+    private static ?ColumnMapper $columnMapper = null;
+
     private const TEMPFILE_MEMORY_LIMIT = 262_144; // 256 KB before spilling to disk
     private const MAX_TRACKED_CATEGORIES = 64;
     private const CATEGORY_OVERFLOW_KEY = '__other__';
+
+    /**
+     * Get or create the ColumnMapper instance.
+     */
+    private static function getColumnMapper(): ColumnMapper
+    {
+        if (self::$columnMapper === null) {
+            self::$columnMapper = new ColumnMapper();
+        }
+
+        return self::$columnMapper;
+    }
+
     /**
      * Prepare dataset entries for model training while keeping processed rows on disk.
      *
@@ -543,7 +559,7 @@ class DatasetRowPreprocessor
                 continue;
             }
 
-            $column = self::normalizeColumnName($value);
+            $column = self::getColumnMapper()->normaliseColumnName($value);
 
             if ($column === '') {
                 $column = trim($value);
@@ -565,23 +581,6 @@ class DatasetRowPreprocessor
         }
 
         return $normalized;
-    }
-
-    private static function normalizeColumnName(string $column): string
-    {
-        $column = preg_replace('/^\xEF\xBB\xBF/u', '', $column) ?? $column;
-        $column = trim($column);
-
-        if ($column === '') {
-            return '';
-        }
-
-        $column = mb_strtolower($column, 'UTF-8');
-        $column = str_replace(['-', '/'], ' ', $column);
-        $column = preg_replace('/[^a-z0-9]+/u', '_', $column) ?? $column;
-        $column = preg_replace('/_+/', '_', $column) ?? $column;
-
-        return trim($column, '_');
     }
 
     /**
