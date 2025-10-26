@@ -87,7 +87,7 @@ const resolveXsrfToken = () => {
     return null
   }
 
-  const cookie = getCookie('XSRF-TOKEN')
+  const cookie = getCookie(xsrfCookieName)
   return decodeXsrfToken(cookie)
 }
 

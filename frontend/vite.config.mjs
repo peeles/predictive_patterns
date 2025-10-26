@@ -67,6 +67,11 @@ export default defineConfig(async () => {
           target: process.env.VITE_PROXY_TARGET || 'http://backend:8000',
           changeOrigin: true,
           secure: false
+        },
+        '/sanctum': {
+          target: process.env.VITE_PROXY_TARGET || 'http://backend:8000',
+          changeOrigin: true,
+          secure: false
         }
       }
     },
