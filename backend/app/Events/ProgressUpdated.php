@@ -20,11 +20,15 @@ class ProgressUpdated implements ShouldBroadcast
 
     public readonly string $updatedAt;
 
+    /**
+     * @param array{current_epoch: int|null, total_epochs: int|null, loss: float|null, accuracy: float|null}|null $metrics
+     */
     public function __construct(
         public readonly string $entityId,
         public readonly string $stage,
         public readonly float $percent,
         public readonly ?string $message,
+        public readonly ?array $metrics = null,
     ) {
         $this->updatedAt = now()->toIso8601String();
     }
@@ -39,17 +43,22 @@ class ProgressUpdated implements ShouldBroadcast
         return 'ProgressUpdated';
     }
 
-    /**
-     * @return array{entity_id: string, stage: string, percent: float, message: string|null, updated_at: string}
-     */
     public function broadcastWith(): array
     {
+        $metrics = [
+            'current_epoch' => $this->metrics['current_epoch'] ?? null,
+            'total_epochs' => $this->metrics['total_epochs'] ?? null,
+            'loss' => $this->metrics['loss'] ?? null,
+            'accuracy' => $this->metrics['accuracy'] ?? null,
+        ];
+
         return [
             'entity_id' => $this->entityId,
             'stage' => $this->stage,
             'percent' => $this->percent,
             'message' => $this->message,
             'updated_at' => $this->updatedAt,
+            'metrics' => $metrics,
         ];
     }
 }
