@@ -9,10 +9,12 @@ use App\Jobs\Middleware\LogJobExecution;
 use App\Models\Prediction;
 use App\Models\PredictiveModel;
 use App\Services\Dataset\ColumnMapper;
+use App\Services\Heatmap\HeatmapGenerator;
 use App\Services\MachineLearning\NormalizerResolver;
-use App\Support\Phpml\ImputerFactory;
-use App\Support\ProbabilityScoreExtractor;
+use App\Services\Prediction\PredictionScorer;
+use App\Services\Prediction\ShapValueCalculator;
 use App\Support\Broadcasting\BroadcastDispatcher;
+use App\Support\Phpml\ImputerFactory;
 use App\Support\TimestampParser;
 use Carbon\CarbonImmutable;
 use Illuminate\Bus\Queueable;
@@ -28,6 +30,7 @@ use Illuminate\Support\Str;
 use InvalidArgumentException;
 use JsonException;
 use Phpml\ModelManager;
+use Phpml\Preprocessing\Imputer;
 use Phpml\Preprocessing\Normalizer;
 use RuntimeException;
 use Throwable;
@@ -48,6 +51,9 @@ class GenerateHeatmapJob implements ShouldQueue
         private readonly bool $generateTiles = false,
         private readonly ColumnMapper $columnMapper = new ColumnMapper(),
         private readonly NormalizerResolver $normalizerResolver = new NormalizerResolver(),
+        private readonly PredictionScorer $predictionScorer = new PredictionScorer(),
+        private readonly HeatmapGenerator $heatmapGenerator = new HeatmapGenerator(),
+        private readonly ShapValueCalculator $shapValueCalculator = new ShapValueCalculator(),
     ) {
     }
 
@@ -92,7 +98,7 @@ class GenerateHeatmapJob implements ShouldQueue
                 $datasetContext['column_map']
             );
             $filtered = $this->filterEntries($entries, $this->parameters);
-            $scored = $this->scoreEntries($filtered, $artifact, $classifier, $preprocessing);
+            $scored = $this->predictionScorer->score($filtered, $classifier, $preprocessing);
 
             if ($scored === []) {
                 $fallbackEntries = $this->prepareEntries(
@@ -101,7 +107,7 @@ class GenerateHeatmapJob implements ShouldQueue
                     $datasetContext['column_map']
                 );
 
-                $scored = $this->scoreEntries($fallbackEntries, $artifact, $classifier, $preprocessing);
+                $scored = $this->predictionScorer->score($fallbackEntries, $classifier, $preprocessing);
 
                 if ($scored === []) {
                     throw new RuntimeException('No usable dataset rows found for prediction.');
@@ -115,10 +121,10 @@ class GenerateHeatmapJob implements ShouldQueue
             );
 
             $summary = $this->buildSummary($scored, $artifact);
-            $heatmap = $this->aggregateHeatmap($scored);
-            $topFeatures = $this->rankFeatureInfluences($artifact);
+            $heatmap = $this->heatmapGenerator->aggregate($scored);
+            $topFeatures = $this->shapValueCalculator->rankFeatures($artifact);
 
-            $this->persistShapValues($prediction, $topFeatures);
+            $this->shapValueCalculator->persist($prediction, $topFeatures);
 
             $this->broadcastStatus(
                 $prediction,
@@ -571,83 +577,6 @@ class GenerateHeatmapJob implements ShouldQueue
             ->values();
     }
 
-    /**
-     * @param LazyCollection<int, array{timestamp: CarbonImmutable, latitude: float, longitude: float, category: string, features: list<float>}> $entries
-     * @param array<string, mixed> $artifact
-     *
-     * @return list<array{timestamp: CarbonImmutable, latitude: float, longitude: float, category: string, score: float}>
-     */
-    private function scoreEntries(
-        LazyCollection $entries,
-        array $artifact,
-        object $classifier,
-        array $context
-    ): array {
-        $means = $context['means'];
-        $stdDevs = $context['std_devs'];
-        $normalizer = $context['normalizer'];
-        $imputer = $context['imputer'];
-
-        return $entries
-            ->chunk(1000)
-            ->flatMap(function ($chunk) use ($imputer, $means, $stdDevs, $normalizer, $classifier) {
-                $chunkEntries = $chunk instanceof LazyCollection ? $chunk->all() : (array) $chunk;
-
-                if ($chunkEntries === []) {
-                    return [];
-                }
-
-                $samples = [];
-                $metadata = [];
-
-                foreach ($chunkEntries as $entry) {
-                    $samples[] = array_map('floatval', $entry['features']);
-                    $metadata[] = [
-                        'timestamp' => $entry['timestamp'],
-                        'latitude' => $entry['latitude'],
-                        'longitude' => $entry['longitude'],
-                        'category' => $entry['category'],
-                    ];
-                }
-
-                $imputer->transform($samples);
-
-                $standardized = [];
-
-                foreach ($samples as $sample) {
-                    $standardized[] = $this->normalizeRow($sample, $means, $stdDevs);
-                }
-
-                $normalizer->transform($standardized);
-
-                if (method_exists($classifier, 'predictProbabilities')) {
-                    $probabilities = ProbabilityScoreExtractor::extractList((array) $classifier->predictProbabilities($standardized));
-                } else {
-                    $predictions = $classifier->predict($standardized);
-                    $probabilities = ProbabilityScoreExtractor::extractList(
-                        array_map(static fn (int $value): float => $value >= 1 ? 1.0 : 0.0, $predictions)
-                    );
-                }
-
-                $scored = [];
-
-                foreach ($metadata as $index => $meta) {
-                    $score = $probabilities[$index] ?? 0.0;
-
-                    $scored[] = [
-                        'timestamp' => $meta['timestamp'],
-                        'latitude' => $meta['latitude'],
-                        'longitude' => $meta['longitude'],
-                        'category' => $meta['category'],
-                        'score' => max(0.0, min(1.0, $score)),
-                    ];
-                }
-
-                return $scored;
-            })
-            ->values()
-            ->all();
-    }
 
     /**
      * @param array<string, mixed> $artifact
@@ -741,167 +670,6 @@ class GenerateHeatmapJob implements ShouldQueue
         ];
     }
 
-    /**
-     * @param list<array{timestamp: CarbonImmutable, latitude: float, longitude: float, category: string, score: float}> $entries
-     *
-     * @return array{points: list<array{id: string, lat: float, lng: float, intensity: float, count: int}>, hotspots: list<array{id: string, lat: float, lng: float, intensity: float, count: int}>}
-     */
-    private function aggregateHeatmap(array $entries): array
-    {
-        $groups = [];
-
-        foreach ($entries as $entry) {
-            $latKey = round($entry['latitude'], 3);
-            $lngKey = round($entry['longitude'], 3);
-            $key = sprintf('%s:%s', $latKey, $lngKey);
-
-            if (! isset($groups[$key])) {
-                $groups[$key] = [
-                    'lat' => $latKey,
-                    'lng' => $lngKey,
-                    'sum' => 0.0,
-                    'count' => 0,
-                ];
-            }
-
-            $groups[$key]['sum'] += $entry['score'];
-            $groups[$key]['count']++;
-        }
-
-        $points = [];
-
-        foreach ($groups as $key => $group) {
-            $average = $group['count'] > 0 ? $group['sum'] / $group['count'] : 0.0;
-
-            $points[] = [
-                'id' => $key,
-                'lat' => $group['lat'],
-                'lng' => $group['lng'],
-                'intensity' => round($average, 4),
-                'count' => $group['count'],
-            ];
-        }
-
-        usort($points, static fn ($a, $b) => $b['intensity'] <=> $a['intensity']);
-
-        $hotspots = array_slice($points, 0, 5);
-
-        return [
-            'points' => $points,
-            'hotspots' => $hotspots,
-        ];
-    }
-
-    /**
-     * @return list<array{name: string, contribution: float, details?: array|null}>
-     */
-    private function rankFeatureInfluences(array $artifact): array
-    {
-        $importances = [];
-
-        if (isset($artifact['feature_importances']) && is_array($artifact['feature_importances'])) {
-            foreach ($artifact['feature_importances'] as $importance) {
-                if (! is_array($importance)) {
-                    continue;
-                }
-
-                $name = (string) ($importance['name'] ?? '');
-
-                if ($name === '') {
-                    continue;
-                }
-
-                $contribution = (float) ($importance['contribution'] ?? 0.0);
-                $details = $importance['details'] ?? null;
-
-                if ($details !== null && ! is_array($details)) {
-                    $details = ['value' => $details];
-                }
-
-                $importances[] = [
-                    'name' => $this->prettifyFeatureName($name),
-                    'contribution' => round($contribution, 4),
-                    'details' => $details,
-                ];
-            }
-        }
-
-        if ($importances === []) {
-            $names = array_map(static fn ($name) => (string) $name, $artifact['feature_names']);
-
-            foreach ($names as $name) {
-                $importances[] = [
-                    'name' => $this->prettifyFeatureName($name),
-                    'contribution' => 0.0,
-                ];
-            }
-        }
-
-        usort($importances, static fn ($a, $b) => abs($b['contribution']) <=> abs($a['contribution']));
-
-        return array_slice($importances, 0, 5);
-    }
-
-    /**
-     * @param list<float> $features
-     * @param list<float> $means
-     * @param list<float> $stdDevs
-     *
-     * @return list<float>
-     */
-    private function normalizeRow(array $features, array $means, array $stdDevs): array
-    {
-        $normalized = [];
-
-        foreach ($features as $index => $value) {
-            $mean = $means[$index] ?? 0.0;
-            $std = $stdDevs[$index] ?? 1.0;
-            $normalized[] = ($value - $mean) / ($std > 1e-12 ? $std : 1.0);
-        }
-
-        return $normalized;
-    }
-
-    /**
-     * @param list<array{name: string, contribution: float, details?: array|null}> $topFeatures
-     */
-    private function persistShapValues(Prediction $prediction, array $topFeatures): void
-    {
-        $prediction->shapValues()->delete();
-
-        if ($topFeatures === []) {
-            return;
-        }
-
-        $records = [];
-
-        foreach ($topFeatures as $feature) {
-            $name = (string) ($feature['name'] ?? '');
-
-            if ($name === '') {
-                continue;
-            }
-
-            $contribution = (float) ($feature['contribution'] ?? 0.0);
-            $details = $feature['details'] ?? null;
-
-            if ($details !== null && ! is_array($details)) {
-                $details = ['value' => $details];
-            }
-
-            $records[] = [
-                'feature_name' => $name,
-                'value' => round($contribution, 6),
-                'details' => $details,
-            ];
-        }
-
-        if ($records === []) {
-            return;
-        }
-
-        $prediction->shapValues()->createMany($records);
-    }
 
     private function resolveCenter(mixed $value): ?array
     {
@@ -986,12 +754,5 @@ class GenerateHeatmapJob implements ShouldQueue
         }
 
         return sqrt($variance / $count);
-    }
-
-    private function prettifyFeatureName(string $name): string
-    {
-        $pretty = str_replace('_', ' ', $name);
-
-        return ucwords($pretty);
     }
 }
