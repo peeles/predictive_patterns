@@ -1,6 +1,5 @@
 includes:
     - vendor/larastan/larastan/extension.neon
-    - vendor/larastan/larastan/rules.neon
 
 parameters:
     paths:
@@ -10,8 +9,6 @@ parameters:
         - database
     level: 6
     tmpDir: storage/framework/phpstan
-    checkMissingIterableValueType: false
-    checkMissingVarReturnType: false
     parallel:
         maximumNumberOfProcesses: 4
     ignoreErrors:
