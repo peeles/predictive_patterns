@@ -6,9 +6,10 @@ use App\Enums\PredictionOutputFormat;
 use App\Enums\PredictionStatus;
 use App\Events\PredictionStatusUpdated;
 use App\Jobs\Middleware\LogJobExecution;
-use App\Models\Dataset;
 use App\Models\Prediction;
 use App\Models\PredictiveModel;
+use App\Services\Dataset\ColumnMapper;
+use App\Services\MachineLearning\NormalizerResolver;
 use App\Support\Phpml\ImputerFactory;
 use App\Support\ProbabilityScoreExtractor;
 use App\Support\Broadcasting\BroadcastDispatcher;
@@ -27,7 +28,6 @@ use Illuminate\Support\Str;
 use InvalidArgumentException;
 use JsonException;
 use Phpml\ModelManager;
-use Phpml\Preprocessing\Imputer;
 use Phpml\Preprocessing\Normalizer;
 use RuntimeException;
 use Throwable;
@@ -46,6 +46,8 @@ class GenerateHeatmapJob implements ShouldQueue
         private readonly string $predictionId,
         private readonly array $parameters,
         private readonly bool $generateTiles = false,
+        private readonly ColumnMapper $columnMapper = new ColumnMapper(),
+        private readonly NormalizerResolver $normalizerResolver = new NormalizerResolver(),
     ) {
     }
 
@@ -387,7 +389,7 @@ class GenerateHeatmapJob implements ShouldQueue
         }
 
         $path = $disk->path($dataset->file_path);
-        $columnMap ??= $this->resolveColumnMap($dataset);
+        $columnMap ??= $this->columnMapper->resolveColumnMap($dataset);
 
         $rows = LazyCollection::make(function () use ($path) {
             $handle = fopen($path, 'rb');
@@ -405,10 +407,10 @@ class GenerateHeatmapJob implements ShouldQueue
 
                         foreach ($data as $index => $value) {
                             $value = is_string($value) ? $value : (string) $value;
-                            $normalized = $this->normalizeColumnName($value);
+                            $normalized = $this->columnMapper->normaliseColumnName($value);
 
                             if ($normalized === '') {
-                                $normalized = $this->normalizeColumnName('column_' . $index);
+                                $normalized = $this->columnMapper->normaliseColumnName('column_' . $index);
                             }
 
                             $header[$index] = $normalized !== '' ? $normalized : 'column_' . $index;
@@ -511,63 +513,6 @@ class GenerateHeatmapJob implements ShouldQueue
             })
             ->filter(static fn ($entry): bool => $entry !== null)
             ->values();
-    }
-
-    /**
-     * @return array<string, string>
-     */
-    private function resolveColumnMap(Dataset $dataset): array
-    {
-        $mapping = is_array($dataset->schema_mapping) ? $dataset->schema_mapping : [];
-
-        return [
-            'timestamp' => $this->resolveMappedColumn($mapping, 'timestamp', 'timestamp'),
-            'latitude' => $this->resolveMappedColumn($mapping, 'latitude', 'latitude'),
-            'longitude' => $this->resolveMappedColumn($mapping, 'longitude', 'longitude'),
-            'category' => $this->resolveMappedColumn($mapping, 'category', 'category'),
-            'risk_score' => $this->resolveMappedColumn($mapping, 'risk', 'risk_score'),
-        ];
-    }
-
-    /**
-     * @param array<string, mixed> $mapping
-     */
-    private function resolveMappedColumn(array $mapping, string $key, string $default): string
-    {
-        $value = $mapping[$key] ?? $default;
-
-        if (! is_string($value) || trim($value) === '') {
-            $value = $default;
-        }
-
-        $normalized = $this->normalizeColumnName($value);
-
-        if ($normalized === '') {
-            $normalized = $this->normalizeColumnName($default);
-        }
-
-        if ($normalized === '') {
-            $normalized = $default;
-        }
-
-        return $normalized;
-    }
-
-    private function normalizeColumnName(string $column): string
-    {
-        $column = preg_replace('/^\xEF\xBB\xBF/u', '', $column) ?? $column;
-        $column = trim($column);
-
-        if ($column === '') {
-            return '';
-        }
-
-        $column = mb_strtolower($column, 'UTF-8');
-        $column = str_replace(['-', '/'], ' ', $column);
-        $column = preg_replace('/[^a-z0-9]+/u', '_', $column) ?? $column;
-        $column = preg_replace('/_+/', '_', $column) ?? $column;
-
-        return trim($column, '_');
     }
 
     /**
@@ -712,7 +657,7 @@ class GenerateHeatmapJob implements ShouldQueue
         $type = Normalizer::NORM_L2;
 
         if (isset($artifact['normalization']) && is_array($artifact['normalization'])) {
-            $type = $this->normalizeNormalizerValue($artifact['normalization']['type'] ?? null);
+            $type = $this->normalizerResolver->normaliseType($artifact['normalization']['type'] ?? null);
         }
 
         try {
@@ -722,56 +667,6 @@ class GenerateHeatmapJob implements ShouldQueue
         }
     }
 
-    /**
-     * Converts various representations of normalizer type into the corresponding constant value.
-     *
-     * @param mixed $value
-     *
-     * @return int
-     */
-    private function normalizeNormalizerValue(mixed $value): int
-    {
-        $default = $this->normalizerConstant('NORM_L2') ?? Normalizer::NORM_L2;
-
-        if (is_int($value)) {
-            return $value;
-        }
-
-        if (is_string($value)) {
-            $normalized = strtolower(trim($value));
-
-            $map = array_filter([
-                'l1' => $this->normalizerConstant('NORM_L1'),
-                'l2' => $this->normalizerConstant('NORM_L2'),
-                'linf' => $this->normalizerConstant('NORM_LINF') ?? $this->normalizerConstant('NORM_MAX'),
-                'inf' => $this->normalizerConstant('NORM_LINF') ?? $this->normalizerConstant('NORM_MAX'),
-                'max' => $this->normalizerConstant('NORM_MAX') ?? $this->normalizerConstant('NORM_LINF'),
-                'maxnorm' => $this->normalizerConstant('NORM_MAX') ?? $this->normalizerConstant('NORM_LINF'),
-                'std' => $this->normalizerConstant('NORM_STD'),
-                'zscore' => $this->normalizerConstant('NORM_STD'),
-            ], static fn ($candidate) => $candidate !== null);
-
-            if (array_key_exists($normalized, $map)) {
-                return (int) $map[$normalized];
-            }
-        }
-
-        return $default;
-    }
-
-    /**
-     * Fetches the value of a Normalizer constant by name.
-     *
-     * @param string $name
-     *
-     * @return int|null
-     */
-    private function normalizerConstant(string $name): ?int
-    {
-        $identifier = Normalizer::class.'::'.$name;
-
-        return defined($identifier) ? (int) constant($identifier) : null;
-    }
 
     /**
      * Builds an imputer instance from the artifact data.

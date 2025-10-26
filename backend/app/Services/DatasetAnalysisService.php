@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Dataset;
+use App\Services\Dataset\ColumnMapper;
 use App\Support\DatasetRowBuffer;
 use App\Support\DatasetRowPreprocessor;
 use App\Support\Phpml\ImputerFactory;
@@ -18,6 +19,11 @@ class DatasetAnalysisService
 {
     private const CACHE_PREFIX = 'dataset_analysis:';
     private const CACHE_TTL_MINUTES = 10;
+
+    public function __construct(
+        private readonly ColumnMapper $columnMapper = new ColumnMapper(),
+    ) {
+    }
 
     public function analyze(Dataset $dataset): array
     {
@@ -63,7 +69,7 @@ class DatasetAnalysisService
             throw new RuntimeException(sprintf('Dataset file "%s" could not be found.', $dataset->file_path));
         }
 
-        $columnMap = $this->resolveColumnMap($dataset);
+        $columnMap = $this->columnMapper->resolveColumnMap($dataset);
         $prepared = DatasetRowPreprocessor::prepareTrainingData($disk->path($dataset->file_path), $columnMap);
         $buffer = $prepared['buffer'];
 
@@ -112,53 +118,6 @@ class DatasetAnalysisService
     private function resolveColumnMap(Dataset $dataset): array
     {
         $mapping = is_array($dataset->schema_mapping) ? $dataset->schema_mapping : [];
-
-        return [
-            'timestamp' => $this->resolveMappedColumn($mapping, 'timestamp', 'timestamp'),
-            'latitude' => $this->resolveMappedColumn($mapping, 'latitude', 'latitude'),
-            'longitude' => $this->resolveMappedColumn($mapping, 'longitude', 'longitude'),
-            'category' => $this->resolveMappedColumn($mapping, 'category', 'category'),
-            'risk_score' => $this->resolveMappedColumn($mapping, 'risk', 'risk_score'),
-            'label' => $this->resolveMappedColumn($mapping, 'label', 'label'),
-        ];
-    }
-
-    /**
-     * @param array<string, mixed> $mapping
-     */
-    private function resolveMappedColumn(array $mapping, string $key, string $default): string
-    {
-        $value = $mapping[$key] ?? $default;
-
-        if (! is_string($value) || trim($value) === '') {
-            $value = $default;
-        }
-
-        $normalized = $this->normalizeColumnName($value);
-
-        if ($normalized === '') {
-            $normalized = $this->normalizeColumnName($default);
-        }
-
-        if ($normalized === '') {
-            $normalized = $default;
-        }
-
-        return $normalized;
-    }
-
-    private function normalizeColumnName(string $column): string
-    {
-        $column = preg_replace('/^\xEF\xBB\xBF/u', '', $column) ?? $column;
-        $column = trim($column);
-
-        if ($column === '') {
-            return '';
-        }
-
-        $column = mb_strtolower($column, 'UTF-8');
-        $column = str_replace(['-', '/'], ' ', $column);
-        $column = preg_replace('/[^a-z0-9]+/u', '_', $column) ?? $column;
         $column = preg_replace('/_+/', '_', $column) ?? $column;
 
         return trim($column, '_');

@@ -5,6 +5,9 @@ namespace App\Services;
 use App\Models\Dataset;
 use App\Models\PredictiveModel;
 use App\Models\TrainingRun;
+use App\Services\Dataset\ColumnMapper;
+use App\Services\MachineLearning\ImputerResolver;
+use App\Services\MachineLearning\NormalizerResolver;
 use App\Support\DatasetRowBuffer;
 use App\Support\DatasetRowPreprocessor;
 use App\Support\FeatureBuffer;
@@ -42,6 +45,13 @@ class ModelTrainingService
 {
     private const MIN_FEATURE_VARIANCE = 1e-9;
     private const MAX_FEATURE_MAGNITUDE = 1_000_000.0;
+
+    public function __construct(
+        private readonly ColumnMapper $columnMapper = new ColumnMapper(),
+        private readonly NormalizerResolver $normalizerResolver = new NormalizerResolver(),
+        private readonly ImputerResolver $imputerResolver = new ImputerResolver(),
+    ) {
+    }
 
     /**
      * Train a predictive model using the specified dataset and hyperparameters.
@@ -92,7 +102,7 @@ class ModelTrainingService
 
         $this->notifyProgress($progressCallback, 10.0, 'Analyzing dataset schema');
 
-        $columnMap = $this->resolveColumnMap($dataset);
+        $columnMap = $this->columnMapper->resolveColumnMap($dataset);
 
         // Log dataset size for monitoring
         $fileSize = filesize($path);
@@ -246,7 +256,7 @@ class ModelTrainingService
             'feature_means' => $splits['means'],
             'feature_std_devs' => $splits['std_devs'],
             'imputer' => [
-                'strategy' => $this->describeImputerStrategy($resolvedHyperparameters['imputation_strategy']),
+                'strategy' => $this->imputerResolver->describeStrategy($resolvedHyperparameters['imputation_strategy']),
                 'statistics' => $this->extractImputerStatistics($imputer),
             ],
             'categories' => $prepared['categories'],
@@ -255,7 +265,7 @@ class ModelTrainingService
             'metrics' => $metrics,
             'grid_search' => $cvMetrics,
             'normalization' => [
-                'type' => $this->describeNormalizerType($resolvedHyperparameters['normalization']),
+                'type' => $this->normalizerResolver->describeType($resolvedHyperparameters['normalization']),
             ],
             'feature_importances' => $featureImportances,
             'model_file' => $modelFilePath,
@@ -279,79 +289,6 @@ class ModelTrainingService
             'metadata' => ['artifact_path' => $artifactPath],
             'hyperparameters' => $finalHyperparameters,
         ];
-    }
-
-    /**
-     * Notify progress via callback if provided.
-     *
-     * @return array<string, string>
-     */
-    private function resolveColumnMap(Dataset $dataset): array
-    {
-        $mapping = is_array($dataset->schema_mapping) ? $dataset->schema_mapping : [];
-
-        return [
-            'timestamp' => $this->resolveMappedColumn($mapping, 'timestamp', 'timestamp'),
-            'latitude' => $this->resolveMappedColumn($mapping, 'latitude', 'latitude'),
-            'longitude' => $this->resolveMappedColumn($mapping, 'longitude', 'longitude'),
-            'category' => $this->resolveMappedColumn($mapping, 'category', 'category'),
-            'risk_score' => $this->resolveMappedColumn($mapping, 'risk', 'risk_score'),
-            'label' => $this->resolveMappedColumn($mapping, 'label', 'label'),
-        ];
-    }
-
-    /**
-     * Notify progress via callback if provided.
-     *
-     * @param array<string, mixed> $mapping
-     * @param string $key
-     * @param string $default
-     *
-     * @return string
-     */
-    private function resolveMappedColumn(array $mapping, string $key, string $default): string
-    {
-        $value = $mapping[$key] ?? $default;
-
-        if (! is_string($value) || trim($value) === '') {
-            $value = $default;
-        }
-
-        $normalized = $this->normalizeColumnName($value);
-
-        if ($normalized === '') {
-            $normalized = $this->normalizeColumnName($default);
-        }
-
-        if ($normalized === '') {
-            $normalized = $default;
-        }
-
-        return $normalized;
-    }
-
-    /**
-     * Notify progress via callback if provided.
-     *
-     * @param string $column
-     *
-     * @return string
-     */
-    private function normalizeColumnName(string $column): string
-    {
-        $column = preg_replace('/^\xEF\xBB\xBF/u', '', $column) ?? $column; // Remove UTF-8 BOM.
-        $column = trim($column);
-
-        if ($column === '') {
-            return '';
-        }
-
-        $column = mb_strtolower($column, 'UTF-8');
-        $column = str_replace(['-', '/'], ' ', $column);
-        $column = preg_replace('/[^a-z0-9]+/u', '_', $column) ?? $column;
-        $column = preg_replace('/_+/', '_', $column) ?? $column;
-
-        return trim($column, '_');
     }
 
     /**
@@ -1502,76 +1439,6 @@ class ModelTrainingService
     }
 
     /**
-     * Resolve an imputer strategy identifier to a human-readable label.
-     */
-    private function describeImputerStrategy(int $strategy): string
-    {
-        $candidates = [
-            'mean' => $this->imputerConstant('STRATEGY_MEAN', 0),
-        ];
-
-        if ($this->hasImputerConstant('STRATEGY_MEDIAN')) {
-            $candidates['median'] = $this->imputerConstant('STRATEGY_MEDIAN', 1);
-        }
-
-        if ($this->hasImputerConstant('STRATEGY_MOST_FREQUENT')) {
-            $candidates['most_frequent'] = $this->imputerConstant('STRATEGY_MOST_FREQUENT', 2);
-        }
-
-        if ($this->hasImputerConstant('STRATEGY_CONSTANT')) {
-            $candidates['constant'] = $this->imputerConstant('STRATEGY_CONSTANT', 3);
-        }
-
-        foreach ($candidates as $label => $value) {
-            if ($value === $strategy) {
-                return $label;
-            }
-        }
-
-        return (string) $strategy;
-    }
-
-    /**
-     * Resolve a normalizer type identifier to a human-readable label.
-     */
-    private function describeNormalizerType(int $type): string
-    {
-        $candidates = [];
-
-        $l1 = $this->normalizerConstant('NORM_L1');
-
-        if ($l1 !== null) {
-            $candidates['l1'] = $l1;
-        }
-
-        $l2 = $this->normalizerConstant('NORM_L2');
-
-        if ($l2 !== null) {
-            $candidates['l2'] = $l2;
-        }
-
-        $max = $this->normalizerConstant('NORM_MAX') ?? $this->normalizerConstant('NORM_LINF');
-
-        if ($max !== null) {
-            $candidates['max'] = $max;
-        }
-
-        $std = $this->normalizerConstant('NORM_STD');
-
-        if ($std !== null) {
-            $candidates['std'] = $std;
-        }
-
-        foreach ($candidates as $label => $value) {
-            if ($value === $type) {
-                return $label;
-            }
-        }
-
-        return (string) $type;
-    }
-
-    /**
      * Attempt to read a property from an object, even if it is not publicly accessible.
      */
     private function readObjectProperty(object $object): mixed
@@ -1740,8 +1607,8 @@ class ModelTrainingService
         $validationSplit = isset($input['validation_split']) ? (float) $input['validation_split'] : 0.2;
         $l2Penalty = isset($input['l2_penalty']) ? (float) $input['l2_penalty'] : 0.01;
         $logInterval = isset($input['log_interval']) ? (int) $input['log_interval'] : 200;
-        $normalization = $this->normalizeNormalizerType($input['normalization'] ?? null);
-        $imputation = $this->normalizeImputationStrategy($input['imputation_strategy'] ?? null);
+        $normalization = $this->normalizerResolver->normaliseType($input['normalization'] ?? null);
+        $imputation = $this->imputerResolver->normaliseStrategy($input['imputation_strategy'] ?? null);
         $lambda = isset($input['lambda']) ? (float) $input['lambda'] : 0.0001;
         $cost = isset($input['cost']) ? (float) $input['cost'] : 1.0;
         $tolerance = isset($input['tolerance']) ? (float) $input['tolerance'] : 0.001;
@@ -1782,17 +1649,17 @@ class ModelTrainingService
         $cvFolds = max(2, min($cvFolds, 10));
         $cvValidationSplit = max(0.1, min($cvValidationSplit, 0.5));
 
-        $availableNormalizations = $this->availableNormalizerTypes();
+        $availableNormalizations = $this->normalizerResolver->getAvailableTypes();
 
         if (! in_array($normalization, $availableNormalizations, true)) {
-            $fallbackNormalization = $this->normalizerConstant('NORM_L2');
+            $fallbackNormalization = $this->normalizerResolver->getConstant('NORM_L2');
             $normalization = $fallbackNormalization ?? ($availableNormalizations[0] ?? $normalization);
         }
 
-        $availableStrategies = $this->availableImputationStrategies();
+        $availableStrategies = $this->imputerResolver->getAvailableStrategies();
 
         if (! in_array($imputation, $availableStrategies, true)) {
-            $fallbackStrategy = $this->imputerConstant('STRATEGY_MEAN', 0);
+            $fallbackStrategy = $this->imputerResolver->getConstant('STRATEGY_MEAN', 0);
             $imputation = $fallbackStrategy ?? ($availableStrategies[0] ?? $imputation);
         }
 
@@ -1854,197 +1721,6 @@ class ModelTrainingService
         }
 
         return $resolved;
-    }
-
-    /**
-     * Get the value of a Normaliser constant if it exists.
-     *
-     * @param mixed $value
-     *
-     * @return int
-     */
-    private function normalizeNormalizerType(mixed $value): int
-    {
-        $default = $this->normalizerConstant('NORM_L2') ?? 2;
-
-        if (is_int($value)) {
-            return $value;
-        }
-
-        if (is_string($value)) {
-            $normalized = strtolower(trim($value));
-            $maxNorm = $this->normalizerConstant('NORM_MAX') ?? $this->normalizerConstant('NORM_LINF');
-            $stdNorm = $this->normalizerConstant('NORM_STD');
-
-            $map = array_filter([
-                'l1' => $this->normalizerConstant('NORM_L1'),
-                'l2' => $this->normalizerConstant('NORM_L2'),
-                'linf' => $maxNorm,
-                'inf' => $maxNorm,
-                'max' => $maxNorm,
-                'maxnorm' => $maxNorm,
-                'std' => $stdNorm,
-                'zscore' => $stdNorm,
-            ], static fn ($candidate) => $candidate !== null);
-
-            if (array_key_exists($normalized, $map)) {
-                return (int) $map[$normalized];
-            }
-        }
-
-        return $default;
-    }
-
-    /**
-     * Normalize imputation strategy from various input formats.
-     *
-     * @param mixed $value
-     *
-     * @return int
-     */
-    private function normalizeImputationStrategy(mixed $value): int
-    {
-        $default = $this->imputerConstant('STRATEGY_MEAN', 0);
-
-        if (is_int($value)) {
-            return $value;
-        }
-
-        if (is_string($value)) {
-            $normalized = strtolower(trim($value));
-            $map = array_filter([
-                'mean' => $this->imputerConstant('STRATEGY_MEAN', $default),
-                'median' => $this->hasImputerConstant('STRATEGY_MEDIAN')
-                    ? $this->imputerConstant('STRATEGY_MEDIAN', 1)
-                    : null,
-                'most_frequent' => $this->hasImputerConstant('STRATEGY_MOST_FREQUENT')
-                    ? $this->imputerConstant('STRATEGY_MOST_FREQUENT', 2)
-                    : null,
-                'mostfrequent' => $this->hasImputerConstant('STRATEGY_MOST_FREQUENT')
-                    ? $this->imputerConstant('STRATEGY_MOST_FREQUENT', 2)
-                    : null,
-                'constant' => $this->hasImputerConstant('STRATEGY_CONSTANT')
-                    ? $this->imputerConstant('STRATEGY_CONSTANT', 3)
-                    : null,
-            ], static fn ($candidate) => $candidate !== null);
-
-            if (array_key_exists($normalized, $map)) {
-                return (int) $map[$normalized];
-            }
-        }
-
-        return $default;
-    }
-
-    /**
-     * Get available normalizer types based on installed PHP-ML version.
-     *
-     * @return list<int>
-     */
-    private function availableNormalizerTypes(): array
-    {
-        $types = [];
-
-        foreach (['NORM_L1', 'NORM_L2'] as $name) {
-            $value = $this->normalizerConstant($name);
-
-            if ($value !== null) {
-                $types[] = $value;
-            }
-        }
-
-        foreach (['NORM_MAX', 'NORM_LINF'] as $name) {
-            $value = $this->normalizerConstant($name);
-
-            if ($value !== null) {
-                $types[] = $value;
-            }
-        }
-
-        $std = $this->normalizerConstant('NORM_STD');
-
-        if ($std !== null) {
-            $types[] = $std;
-        }
-
-        if ($types === []) {
-            $types[] = 2;
-        }
-
-        return array_values(array_unique($types));
-    }
-
-    /**
-     * Get available imputation strategies based on installed PHP-ML version.
-     *
-     * @return list<int>
-     */
-    private function availableImputationStrategies(): array
-    {
-        $strategies = [$this->imputerConstant('STRATEGY_MEAN', 0)];
-
-        if ($this->hasImputerConstant('STRATEGY_MEDIAN')) {
-            $strategies[] = $this->imputerConstant('STRATEGY_MEDIAN', 1);
-        }
-
-        if ($this->hasImputerConstant('STRATEGY_MOST_FREQUENT')) {
-            $strategies[] = $this->imputerConstant('STRATEGY_MOST_FREQUENT', 2);
-        }
-
-        if ($this->hasImputerConstant('STRATEGY_CONSTANT')) {
-            $strategies[] = $this->imputerConstant('STRATEGY_CONSTANT', 3);
-        }
-
-        return array_values(array_unique($strategies));
-    }
-
-    /**
-     * Check if the imputer constant is defined (for compatibility with different PHP-ML versions).
-     *
-     * @param string $name
-     *
-     * @return bool
-     */
-    private function hasImputerConstant(string $name): bool
-    {
-        return defined(Imputer::class . '::' . $name);
-    }
-
-    /**
-     * Get the value of a Normalizer constant if it exists.
-     *
-     * @param string $name
-     *
-     * @return int|null
-     */
-    private function normalizerConstant(string $name): ?int
-    {
-        $identifier = Normalizer::class . '::' . $name;
-
-        if (! defined($identifier)) {
-            return null;
-        }
-
-        return (int) constant($identifier);
-    }
-
-    /**
-     * Get the value of an Imputer constant if it exists, otherwise return the fallback.
-     *
-     * @param string $name
-     * @param int $fallback
-     *
-     * @return int
-     */
-    private function imputerConstant(string $name, int $fallback): int
-    {
-        $identifier = Imputer::class . '::' . $name;
-
-        if (! defined($identifier)) {
-            return $fallback;
-        }
-
-        return (int) constant($identifier);
     }
 
     /**
