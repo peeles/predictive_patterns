@@ -25,9 +25,9 @@ class ModelStatusUpdated implements ShouldBroadcast
      * @param array<string, mixed>|null $trainingMetrics
      */
     public function __construct(
-        public int $modelId,
+        public string $modelId,
         public string $status,
-        public int $progress,
+        public float $progress,
         ?string $message = null,
         public ?array $metrics = null,
         public ?string $errorMessage = null,

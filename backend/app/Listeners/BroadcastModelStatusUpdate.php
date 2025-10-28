@@ -32,8 +32,7 @@ class BroadcastModelStatusUpdate
         $broadcastEvent = new ModelStatusUpdated(
             $modelId,
             $state,
-            $progress,
-            $updatedAt,
+            $progress ?? 0.0,
             $message,
         );
 
