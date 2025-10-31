@@ -1,6 +1,6 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { describe, expect, it, beforeEach, vi } from 'vitest'
-import AuthView from '../AuthView.vue'
+import AuthView from '../../src/views/AuthView.vue'
 
 const push = vi.fn()
 const loginMock = vi.fn()
