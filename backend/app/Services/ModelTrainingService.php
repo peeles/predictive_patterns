@@ -189,10 +189,18 @@ class ModelTrainingService
         $finalHyperparameters = array_merge($resolvedHyperparameters, $bestParams);
         unset($finalHyperparameters['search_grid']);
 
+        // Free memory from grid search after extracting needed values
+        unset($gridSearch);
+        gc_collect_cycles();
+
         $trainSamples = $trainRaw['samples'];
         $trainLabels = $trainRaw['labels'];
         $validationSamples = $validationRaw['samples'];
         $validationLabels = $validationRaw['labels'];
+
+        // Free memory from raw data structures after extraction
+        unset($trainRaw, $validationRaw);
+        gc_collect_cycles();
 
         $imputer = ImputerFactory::create($resolvedHyperparameters['imputation_strategy']);
         $imputer->fit($trainSamples);
@@ -206,6 +214,9 @@ class ModelTrainingService
         $this->dataPreprocessor->normaliseSamplesSafely($normalizer, $trainSamples);
         $this->dataPreprocessor->normaliseSamplesSafely($normalizer, $validationSamples);
 
+        // Free memory after preprocessing
+        gc_collect_cycles();
+
         $classifier = $this->classifierFactory->create(
             $resolvedHyperparameters['model_type'],
             $bestParams,
@@ -216,6 +227,9 @@ class ModelTrainingService
         $this->notifyProgress($progressCallback, 62.0, 'Training selected algorithm');
 
         $classifier->train($trainSamples, $trainLabels);
+
+        // Free memory after classifier training
+        gc_collect_cycles();
 
         $this->notifyProgress($progressCallback, 75.0, 'Evaluating validation dataset');
 
@@ -230,9 +244,17 @@ class ModelTrainingService
         $confusion = $classification['confusion'];
         $metrics = $this->metricsFormatter->format($report, $confusion, $probabilities, $validationLabels);
 
+        // Free memory from validation predictions
+        unset($predicted, $rawProbabilities, $probabilities, $classification, $report, $confusion);
+        gc_collect_cycles();
+
         $this->notifyProgress($progressCallback, 82.0, 'Computing feature importances');
 
         $featureImportances = $this->featureImportanceCalculator->calculate($trainSamples, $trainLabels, $prepared['feature_names']);
+
+        // Free memory from training samples after feature importance calculation
+        unset($trainSamples, $trainLabels, $validationSamples, $validationLabels);
+        gc_collect_cycles();
 
         $this->notifyProgress($progressCallback, 87.0, 'Persisting trained model');
 
@@ -276,6 +298,10 @@ class ModelTrainingService
 
         $modelManager = new ModelManager();
         $modelManager->saveToFile($classifier, $disk->path($modelFilePath));
+
+        // Final cleanup after model persistence
+        unset($classifier, $imputer, $normalizer, $artifact);
+        gc_collect_cycles();
 
         $this->notifyProgress($progressCallback, 92.0, 'Recording training metadata');
 
