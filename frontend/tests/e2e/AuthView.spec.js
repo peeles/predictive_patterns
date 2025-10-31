@@ -11,11 +11,16 @@ vi.mock('vue-router', () => ({
     })
 }))
 
-vi.mock('../../stores/auth', () => ({
-    useAuthStore: () => ({
-        login: loginMock
-    })
-}))
+function createAuthStoreMock() {
+    return {
+        useAuthStore: () => ({
+            login: loginMock,
+        }),
+    }
+}
+
+vi.mock('../stores/auth', () => createAuthStoreMock())
+vi.mock('../../src/stores/auth', () => createAuthStoreMock())
 
 describe('AuthView', () => {
     beforeEach(() => {
