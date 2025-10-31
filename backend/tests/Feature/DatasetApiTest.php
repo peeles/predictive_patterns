@@ -11,7 +11,6 @@ use App\Jobs\IngestRemoteDataset;
 use App\Jobs\NotifyDatasetReady;
 use App\Models\Dataset;
 use App\Notifications\DatasetReadyNotification;
-use App\Services\H3AggregationService;
 use App\Services\H3\H3CacheManager;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
