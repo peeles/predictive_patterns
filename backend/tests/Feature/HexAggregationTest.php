@@ -115,12 +115,15 @@ class HexAggregationTest extends TestCase
             'h3_res6' => '86052c07fffffff',
         ]);
 
+        // With automatic cache invalidation via DatasetRecordObserver,
+        // the cache is invalidated immediately when records are created
         $this->withToken($tokens['accessToken'])
             ->getJson($url)
             ->assertOk()
             ->assertJsonPath('success', true)
-            ->assertJsonPath('data.cells.0.count', 1);
+            ->assertJsonPath('data.cells.0.count', 2);
 
+        // Manual cache bump still works for explicit invalidation scenarios
         app(H3AggregationService::class)->bumpCacheVersion();
 
         $this->withToken($tokens['accessToken'])

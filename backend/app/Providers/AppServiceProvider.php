@@ -4,8 +4,10 @@ namespace App\Providers;
 
 use App\Enums\Role;
 use App\Models\Dataset;
+use App\Models\DatasetRecord;
 use App\Models\PredictiveModel;
 use App\Observers\DatasetObserver;
+use App\Observers\DatasetRecordObserver;
 use App\Observers\PredictiveModelObserver;
 use App\Repositories\DatasetRepositoryInterface;
 use App\Repositories\PredictiveModelRepositoryInterface;
@@ -51,6 +53,7 @@ class AppServiceProvider extends ServiceProvider
         $this->configureRateLimiting();
         $this->registerSlowQueryLogger();
         Dataset::observe(DatasetObserver::class);
+        DatasetRecord::observe(DatasetRecordObserver::class);
         PredictiveModel::observe(PredictiveModelObserver::class);
     }
 
