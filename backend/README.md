@@ -276,15 +276,15 @@ composer test:pest
 Frontend Tests (Vitest + Playwright)
 
 # Inside frontend container (make fe) or locally
-npm run test:unit      # Vitest unit tests with coverage
-npm run test:e2e       # Playwright end-to-end tests
+- npm run test:unit      # Vitest unit tests with coverage
+- npm run test:e2e       # Playwright end-to-end tests
 
-Code Quality Checks
+### Code Quality Checks
 
 # From inside backend container
-composer lint          # Check PSR-12 compliance
-composer lint:fix      # Auto-fix style issues
-composer analyse       # Run Larastan static analysis
+- composer lint          # Check PSR-12 compliance
+- composer lint:fix      # Auto-fix style issues
+- composer analyse       # Run Larastan static analysis
 
 Quick Commands (Makefile)
 

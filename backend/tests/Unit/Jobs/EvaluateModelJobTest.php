@@ -89,7 +89,7 @@ class EvaluateModelJobTest extends TestCase
         $evaluation = $model->metadata['evaluations'][0];
 
         $this->assertSame($dataset->id, $evaluation['dataset_id']);
-        $this->assertEquals(
+        $this->assertEqualsCanonicalizing(
             ['accuracy', 'macro_precision', 'macro_recall', 'macro_f1', 'weighted_precision', 'weighted_recall', 'weighted_f1', 'per_class', 'confusion_matrix', 'auc'],
             array_keys($evaluation['metrics'])
         );

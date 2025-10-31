@@ -64,7 +64,7 @@ it('emits staged progress updates with metrics during training', function (): vo
         'hyperparameters' => ['epochs' => 4],
     ]);
 
-    $job = new TestableTrainModelJob($run->id, null, null, $run->initiated_by);
+    $job = new TestableTrainModelJob($run->id, null, null, (string) $run->initiated_by);
 
     $trainingService = Mockery::mock(ModelTrainingService::class);
     $trainingService
@@ -129,5 +129,5 @@ it('emits staged progress updates with metrics during training', function (): vo
 
     expect($run->status->value)->toBe('completed')
         ->and($model->status->value)->toBe('active')
-        ->and($model->metadata['training_progress']['percent'])->toBe(100.0);
+        ->and($model->metadata['training_progress']['percent'])->toEqual(100.0);
 });

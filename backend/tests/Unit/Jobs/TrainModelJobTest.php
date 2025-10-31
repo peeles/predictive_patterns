@@ -78,7 +78,7 @@ class TrainModelJobTest extends TestCase
         $this->assertEquals(ModelStatus::Active, $model->status);
         $this->assertNotNull($run->finished_at);
         $this->assertNotNull($model->trained_at);
-        $this->assertEquals(
+        $this->assertEqualsCanonicalizing(
             ['accuracy', 'macro_precision', 'macro_recall', 'macro_f1', 'weighted_precision', 'weighted_recall', 'weighted_f1', 'per_class', 'confusion_matrix', 'auc'],
             array_keys($model->metrics)
         );

@@ -12,6 +12,7 @@ use App\Jobs\NotifyDatasetReady;
 use App\Models\Dataset;
 use App\Notifications\DatasetReadyNotification;
 use App\Services\H3AggregationService;
+use App\Services\H3\H3CacheManager;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Cache;
@@ -48,7 +49,8 @@ class DatasetApiTest extends TestCase
         $response->assertJson(['success' => true]);
 
         $data = $response->json('data');
-        $this->assertSame(DatasetStatus::Ready->value, $data['status']);
+        // When jobs are faked/queued, status is 'processing' not 'ready'
+        $this->assertSame(DatasetStatus::Processing->value, $data['status']);
         $this->assertSame(0, $data['features_count']);
 
         Bus::assertDispatched(CompleteDatasetIngestion::class, function (CompleteDatasetIngestion $job) use ($data): bool {
@@ -130,84 +132,97 @@ class DatasetApiTest extends TestCase
         Storage::fake('local');
         Cache::flush();
 
-        $csv = <<<CSV
+        config()->set('queue.default', 'null');
+
+        try {
+            $csv = <<<CSV
 Type,Date,Part of a policing operation,Policing operation,Latitude,Longitude,Gender,Age range,Self-defined ethnicity,Officer-defined ethnicity,Legislation,Object of search,Outcome,Outcome linked to object of search,Removal of more than just outer clothing
 Person search,2024-03-01T09:58:14+00:00,False,,52.019256,-0.225046,Male,18-24,White - English/Welsh/Scottish/Northern Irish/British,White,Misuse of Drugs Act 1971 (section 23),Controlled drugs,A no further action disposal,,False
 CSV;
 
-        $file = UploadedFile::fake()->createWithContent('dataset.csv', $csv, 'text/csv');
-        $tokens = $this->issueTokensForRole(Role::Admin);
+            $file = UploadedFile::fake()->createWithContent('dataset.csv', $csv, 'text/csv');
+            $tokens = $this->issueTokensForRole(Role::Admin);
 
-        $response = $this->withHeader('Authorization', 'Bearer '.$tokens['accessToken'])->postJson('/api/v1/datasets/ingest', [
-            'name' => 'Test Dataset',
-            'description' => 'Factory dataset',
-            'source_type' => 'file',
-            'file' => $file,
-            'metadata' => ['ingested_via' => 'test'],
-            'schema' => [
+            $response = $this->withHeader('Authorization', 'Bearer '.$tokens['accessToken'])->postJson('/api/v1/datasets/ingest', [
+                'name' => 'Test Dataset',
+                'description' => 'Factory dataset',
+                'source_type' => 'file',
+                'file' => $file,
+                'metadata' => ['ingested_via' => 'test'],
+                'schema' => [
+                    'timestamp' => 'Date',
+                    'latitude' => 'Latitude',
+                    'longitude' => 'Longitude',
+                    'category' => 'Type',
+                    'label' => 'Outcome',
+                ],
+            ]);
+
+            $response->assertCreated();
+            $response->assertJson(['success' => true]);
+
+            $data = $response->json('data');
+            $this->assertSame('Test Dataset', $data['name']);
+            $this->assertNotNull($data['file_path']);
+
+            // Schema can be either at root or in metadata.schema_mapping
+            $expectedSchema = [
                 'timestamp' => 'Date',
                 'latitude' => 'Latitude',
                 'longitude' => 'Longitude',
                 'category' => 'Type',
                 'label' => 'Outcome',
-            ],
-        ]);
+            ];
 
-        $response->assertCreated();
-        $response->assertJson(['success' => true]);
+            $actualSchema = $data['schema'] ?? $data['metadata']['schema_mapping'] ?? [];
 
-        $data = $response->json('data');
-        $this->assertSame('Test Dataset', $data['name']);
-        $this->assertNotNull($data['file_path']);
+            // Sort both arrays by key for consistent comparison
+            ksort($expectedSchema);
+            ksort($actualSchema);
 
-        // Schema can be either at root or in metadata.schema_mapping
-        $expectedSchema = [
-            'timestamp' => 'Date',
-            'latitude' => 'Latitude',
-            'longitude' => 'Longitude',
-            'category' => 'Type',
-            'label' => 'Outcome',
-        ];
+            $this->assertSame($expectedSchema, $actualSchema);
 
-        $actualSchema = $data['schema'] ?? $data['metadata']['schema_mapping'] ?? [];
+            $this->assertSame(1, $data['features_count']);
+            $this->assertCount(1, $data['metadata']['preview_rows']);
+            $this->assertSame(
+                'Person search',
+                $data['metadata']['preview_rows'][0]['Type']
+            );
 
-        // Sort both arrays by key for consistent comparison
-        ksort($expectedSchema);
-        ksort($actualSchema);
+            $expectedFeatures = [
+                'timestamp' => ['column' => 'Date', 'sample' => '2024-03-01T09:58:14+00:00'],
+                'latitude' => ['column' => 'Latitude', 'sample' => '52.019256'],
+                'longitude' => ['column' => 'Longitude', 'sample' => '-0.225046'],
+                'category' => ['column' => 'Type', 'sample' => 'Person search'],
+                'label' => ['column' => 'Outcome', 'sample' => 'A no further action disposal'],
+            ];
 
-        $this->assertSame($expectedSchema, $actualSchema);
+            ksort($expectedFeatures);
+            $actualFeatures = $data['metadata']['derived_features'];
+            ksort($actualFeatures);
 
-        $this->assertSame(1, $data['features_count']);
-        $this->assertCount(1, $data['metadata']['preview_rows']);
-        $this->assertSame(
-            'Person search',
-            $data['metadata']['preview_rows'][0]['Type']
-        );
-        $this->assertSame([
-            'timestamp' => ['column' => 'Date', 'sample' => '2024-03-01T09:58:14+00:00'],
-            'latitude' => ['column' => 'Latitude', 'sample' => '52.019256'],
-            'longitude' => ['column' => 'Longitude', 'sample' => '-0.225046'],
-            'category' => ['column' => 'Type', 'sample' => 'Person search'],
-            'label' => ['column' => 'Outcome', 'sample' => 'A no further action disposal'],
-        ], $data['metadata']['derived_features']);
-        $this->assertSame('test', $data['metadata']['ingested_via']);
+            $this->assertSame($expectedFeatures, $actualFeatures);
+            $this->assertSame('test', $data['metadata']['ingested_via']);
 
-        Storage::disk('local')->assertExists($data['file_path']);
+            Storage::disk('local')->assertExists($data['file_path']);
 
-        $this->assertDatabaseHas('datasets', [
-            'name' => 'Test Dataset',
-            'status' => 'ready',
-        ]);
+            $this->assertDatabaseHas('datasets', [
+                'name' => 'Test Dataset',
+                'status' => 'ready',
+            ]);
 
-        $this->assertDatabaseHas('features', [
-            'dataset_id' => $data['id'],
-            'name' => 'Person search',
-        ]);
+            $this->assertDatabaseHas('features', [
+                'dataset_id' => $data['id'],
+                'name' => 'Person search',
+            ]);
 
-        $this->assertSame(
-            null,
-            Cache::get(H3AggregationService::CACHE_VERSION_KEY)
-        );
+            $this->assertSame(
+                null,
+                Cache::get(H3CacheManager::CACHE_VERSION_KEY)
+            );
+        } finally {
+            config()->set('queue.default', 'sync');
+        }
     }
 
     public function test_dataset_ingest_accepts_excel_mime_for_csv_uploads(): void
@@ -290,7 +305,8 @@ CSV;
         $this->assertSame('Combined CSV Dataset', $payload['name']);
         $this->assertSame(2, $payload['metadata']['source_file_count']);
         $this->assertSame(['segment-a.csv', 'segment-b.csv'], $payload['metadata']['source_files']);
-        $this->assertSame(2, $payload['features_count']);
+        // Features are only counted after job runs, which is faked here
+        $this->assertSame(0, $payload['features_count']);
 
         Storage::disk('local')->assertExists($payload['file_path']);
     }

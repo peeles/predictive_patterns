@@ -28,6 +28,14 @@ class QueueHealthCheckTest extends TestCase
 
         DB::shouldReceive('table')->with('failed_jobs')->andReturn($query);
 
+        // TestCase tearDown tries to check for transactions
+        $pdo = Mockery::mock(\PDO::class);
+        $pdo->shouldReceive('inTransaction')->andReturn(false);
+
+        $connection = Mockery::mock();
+        $connection->shouldReceive('getPdo')->andReturn($pdo);
+        DB::shouldReceive('connection')->zeroOrMoreTimes()->andReturn($connection);
+
         $expectedMetrics = [
             'queues' => [
                 'default' => [

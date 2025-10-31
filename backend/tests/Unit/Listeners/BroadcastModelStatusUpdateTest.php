@@ -25,7 +25,7 @@ class BroadcastModelStatusUpdateTest extends TestCase
 
         Event::assertDispatched(ModelStatusUpdated::class, function (ModelStatusUpdated $event): bool {
             return $event->modelId === 'model-123'
-                && $event->state === 'training'
+                && $event->status === 'training'
                 && $event->progress === 50.0
                 && $event->message === 'Halfway there';
         });
@@ -45,7 +45,7 @@ class BroadcastModelStatusUpdateTest extends TestCase
 
         Event::assertDispatched(ModelStatusUpdated::class, function (ModelStatusUpdated $event) use ($model): bool {
             return $event->modelId === $model->getKey()
-                && $event->state === ModelStatus::Active->value
+                && $event->status === ModelStatus::Active->value
                 && $event->progress === 100.0;
         });
     }
