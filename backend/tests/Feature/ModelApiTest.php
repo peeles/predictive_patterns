@@ -116,7 +116,7 @@ class ModelApiTest extends TestCase
         });
 
         Event::assertDispatched(ModelStatusUpdated::class, function (ModelStatusUpdated $event) use ($model): bool {
-            return $event->modelId === $model->id && $event->state === 'training' && $event->progress === 0.0;
+            return $event->modelId === $model->id && $event->status === 'training' && $event->progress === 0.0;
         });
 
         $this->assertDatabaseHas('training_runs', [
@@ -366,7 +366,7 @@ class ModelApiTest extends TestCase
         Bus::assertDispatched(EvaluateModelJob::class);
 
         Event::assertDispatched(ModelStatusUpdated::class, function (ModelStatusUpdated $event) use ($model): bool {
-            return $event->modelId === $model->id && $event->state === 'evaluating' && $event->progress === 0.0;
+            return $event->modelId === $model->id && $event->status === 'evaluating' && $event->progress === 0.0;
         });
     }
 
