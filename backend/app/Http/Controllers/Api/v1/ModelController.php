@@ -269,7 +269,11 @@ class ModelController extends BaseController
         $disk = Storage::disk('local');
 
         if (! $disk->exists($artifactPath)) {
-            throw new RuntimeException(sprintf('Artifact "%s" could not be found.', $artifactPath));
+            throw ErrorSanitizer::exception(
+                sprintf('Artifact "%s" could not be found.', $artifactPath),
+                ErrorSanitizer::ERROR_ARTIFACT_NOT_FOUND,
+                ['model_id' => $model->getKey(), 'version' => $version]
+            );
         }
 
         try {

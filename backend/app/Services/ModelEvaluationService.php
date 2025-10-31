@@ -8,6 +8,7 @@ use App\Services\Dataset\ColumnMapper;
 use App\Services\MachineLearning\ImputerResolver;
 use App\Services\MachineLearning\NormalizerResolver;
 use App\Support\DatasetRowBuffer;
+use App\Support\ErrorSanitizer;
 use App\Support\DatasetRowPreprocessor;
 use App\Support\Metrics\ClassificationReportGenerator;
 use App\Support\Phpml\ImputerFactory;
@@ -61,7 +62,11 @@ class ModelEvaluationService
         $disk = Storage::disk('local');
 
         if (! $disk->exists($artifactPath)) {
-            throw new RuntimeException(sprintf('Model artifact "%s" was not found.', $artifactPath));
+            throw ErrorSanitizer::exception(
+                sprintf('Model artifact "%s" was not found.', $artifactPath),
+                ErrorSanitizer::ERROR_ARTIFACT_NOT_FOUND,
+                ['model_id' => $model->getKey()]
+            );
         }
 
         $artifactContents = $disk->get($artifactPath);
@@ -82,7 +87,11 @@ class ModelEvaluationService
         }
 
         if (! $disk->exists($modelFile)) {
-            throw new RuntimeException(sprintf('Trained model file "%s" was not found.', $modelFile));
+            throw ErrorSanitizer::exception(
+                sprintf('Trained model file "%s" was not found.', $modelFile),
+                ErrorSanitizer::ERROR_FILE_NOT_FOUND,
+                ['model_id' => $model->getKey(), 'model_file' => basename($modelFile)]
+            );
         }
 
         if ($dataset->file_path === null) {
@@ -90,7 +99,11 @@ class ModelEvaluationService
         }
 
         if (! $disk->exists($dataset->file_path)) {
-            throw new RuntimeException(sprintf('Evaluation dataset "%s" was not found.', $dataset->file_path));
+            throw ErrorSanitizer::exception(
+                sprintf('Evaluation dataset "%s" was not found.', $dataset->file_path),
+                ErrorSanitizer::ERROR_DATASET_NOT_FOUND,
+                ['dataset_id' => $dataset->id]
+            );
         }
 
         if ($progressCallback !== null) {
