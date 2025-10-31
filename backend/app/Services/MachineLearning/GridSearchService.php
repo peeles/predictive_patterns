@@ -20,9 +20,9 @@ use Phpml\Preprocessing\Normalizer;
 class GridSearchService
 {
     public function __construct(
-        private readonly HyperparameterResolver $hyperparameterResolver = new HyperparameterResolver(),
-        private readonly ClassifierFactory $classifierFactory = new ClassifierFactory(),
-        private readonly DataPreprocessor $dataPreprocessor = new DataPreprocessor(),
+        private readonly HyperparameterResolver $hyperparameterResolver,
+        private readonly ClassifierFactory $classifierFactory,
+        private readonly DataPreprocessor $dataPreprocessor,
     ) {
     }
 

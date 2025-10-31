@@ -26,9 +26,9 @@ use Throwable;
 class ModelEvaluationService
 {
     public function __construct(
-        private readonly ColumnMapper $columnMapper = new ColumnMapper(),
-        private readonly NormalizerResolver $normalizerResolver = new NormalizerResolver(),
-        private readonly ImputerResolver $imputerResolver = new ImputerResolver(),
+        private readonly ColumnMapper $columnMapper,
+        private readonly NormalizerResolver $normalizerResolver,
+        private readonly ImputerResolver $imputerResolver,
     ) {
     }
     /**

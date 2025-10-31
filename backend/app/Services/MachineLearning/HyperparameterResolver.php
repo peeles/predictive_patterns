@@ -15,8 +15,8 @@ use Illuminate\Support\Arr;
 class HyperparameterResolver
 {
     public function __construct(
-        private readonly NormalizerResolver $normalizerResolver = new NormalizerResolver(),
-        private readonly ImputerResolver $imputerResolver = new ImputerResolver(),
+        private readonly NormalizerResolver $normalizerResolver,
+        private readonly ImputerResolver $imputerResolver,
     ) {
     }
 

@@ -39,15 +39,15 @@ class ModelTrainingService
     private const MAX_FEATURE_MAGNITUDE = 1_000_000.0;
 
     public function __construct(
-        private readonly ColumnMapper $columnMapper = new ColumnMapper(),
-        private readonly NormalizerResolver $normalizerResolver = new NormalizerResolver(),
-        private readonly ImputerResolver $imputerResolver = new ImputerResolver(),
-        private readonly HyperparameterResolver $hyperparameterResolver = new HyperparameterResolver(),
-        private readonly ClassifierFactory $classifierFactory = new ClassifierFactory(),
-        private readonly DataPreprocessor $dataPreprocessor = new DataPreprocessor(),
-        private readonly GridSearchService $gridSearchService = new GridSearchService(),
-        private readonly MetricsFormatter $metricsFormatter = new MetricsFormatter(),
-        private readonly FeatureImportanceCalculator $featureImportanceCalculator = new FeatureImportanceCalculator(),
+        private readonly ColumnMapper $columnMapper,
+        private readonly NormalizerResolver $normalizerResolver,
+        private readonly ImputerResolver $imputerResolver,
+        private readonly HyperparameterResolver $hyperparameterResolver,
+        private readonly ClassifierFactory $classifierFactory,
+        private readonly DataPreprocessor $dataPreprocessor,
+        private readonly GridSearchService $gridSearchService,
+        private readonly MetricsFormatter $metricsFormatter,
+        private readonly FeatureImportanceCalculator $featureImportanceCalculator,
     ) {
     }
 

@@ -21,7 +21,7 @@ class DatasetAnalysisService
     private const CACHE_TTL_MINUTES = 10;
 
     public function __construct(
-        private readonly ColumnMapper $columnMapper = new ColumnMapper(),
+        private readonly ColumnMapper $columnMapper,
     ) {
     }
 
