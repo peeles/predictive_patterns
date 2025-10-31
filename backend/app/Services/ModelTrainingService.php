@@ -5,58 +5,47 @@ namespace App\Services;
 use App\Models\Dataset;
 use App\Models\PredictiveModel;
 use App\Models\TrainingRun;
-use App\Services\Dataset\ColumnMapper;
 use App\Services\MachineLearning\ClassifierFactory;
-use App\Services\MachineLearning\DataPreprocessor;
 use App\Services\MachineLearning\FeatureImportanceCalculator;
 use App\Services\MachineLearning\GridSearchService;
 use App\Services\MachineLearning\HyperparameterResolver;
-use App\Services\MachineLearning\ImputerResolver;
 use App\Services\MachineLearning\MetricsFormatter;
-use App\Services\MachineLearning\NormalizerResolver;
-use App\Support\DatasetRowBuffer;
-use App\Support\DatasetRowPreprocessor;
+use App\Services\MachineLearning\ModelArtifactPersistenceService;
+use App\Services\MachineLearning\TrainingDataPreparationService;
 use App\Support\Metrics\ClassificationReportGenerator;
-use App\Support\Phpml\ImputerFactory;
 use App\Support\ProbabilityScoreExtractor;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Storage;
-use Phpml\Classification\Linear\LogisticRegression as PhpmlLogisticRegression;
 use Phpml\Exception\FileException;
 use Phpml\Exception\InvalidOperationException;
 use Phpml\Exception\LibsvmCommandException;
 use Phpml\Exception\NormalizerException;
 use Phpml\Exception\SerializeException;
-use Phpml\ModelManager;
-use Phpml\Preprocessing\Imputer;
-use Phpml\Preprocessing\Normalizer;
-use ReflectionClass;
 use RuntimeException;
 
+/**
+ * Orchestrates the complete model training pipeline.
+ *
+ * Coordinates data preparation, grid search, training, evaluation,
+ * and persistence through specialized services.
+ */
 class ModelTrainingService
 {
-    private const MIN_FEATURE_VARIANCE = 1e-9;
-    private const MAX_FEATURE_MAGNITUDE = 1_000_000.0;
-
     public function __construct(
-        private readonly ColumnMapper $columnMapper,
-        private readonly NormalizerResolver $normalizerResolver,
-        private readonly ImputerResolver $imputerResolver,
         private readonly HyperparameterResolver $hyperparameterResolver,
-        private readonly ClassifierFactory $classifierFactory,
-        private readonly DataPreprocessor $dataPreprocessor,
+        private readonly TrainingDataPreparationService $dataPreparationService,
         private readonly GridSearchService $gridSearchService,
+        private readonly ClassifierFactory $classifierFactory,
         private readonly MetricsFormatter $metricsFormatter,
         private readonly FeatureImportanceCalculator $featureImportanceCalculator,
+        private readonly ModelArtifactPersistenceService $persistenceService,
     ) {
     }
 
     /**
      * Train a predictive model using the specified dataset and hyperparameters.
      *
-     * @param TrainingRun $run
-     * @param PredictiveModel $model
-     * @param array<string, mixed> $hyperparameters
+     * @param TrainingRun $run Training run instance
+     * @param PredictiveModel $model Model to train
+     * @param array<string, mixed> $hyperparameters User-provided hyperparameters
      * @param callable|null $progressCallback Callback signature: function (float $progress, ?string $message = null): void
      *
      * @return array{
@@ -85,101 +74,23 @@ class ModelTrainingService
             throw new RuntimeException('Predictive model does not have an associated dataset.');
         }
 
-        if ($dataset->file_path === null) {
-            throw new RuntimeException('Dataset is missing a file path.');
-        }
-
-        $disk = Storage::disk('local');
-
-        if (! $disk->exists($dataset->file_path)) {
-            throw new RuntimeException(sprintf('Dataset file "%s" was not found.', $dataset->file_path));
-        }
-
-        $path = $disk->path($dataset->file_path);
-
+        // Phase 1: Resolve hyperparameters
         $this->notifyProgress($progressCallback, 10.0, 'Analyzing dataset schema');
-
-        $columnMap = $this->columnMapper->resolveColumnMap($dataset);
-
-        // Log dataset size for monitoring
-        $fileSize = filesize($path);
-        Log::info('Loading dataset for training', [
-            'dataset_id' => $dataset->id,
-            'file_size' => $fileSize,
-            'file_size_mb' => round($fileSize / 1024 / 1024, 2),
-        ]);
-
-        $prepared = DatasetRowPreprocessor::prepareTrainingData($path, $columnMap);
-        $buffer = $prepared['buffer'];
-
-        if (! $buffer instanceof DatasetRowBuffer || $buffer->count() === 0) {
-            throw new RuntimeException('Dataset file does not contain any rows.');
-        }
-
         $resolvedHyperparameters = $this->hyperparameterResolver->resolve($hyperparameters);
 
-        $this->notifyProgress($progressCallback, 30.0, 'Buffered dataset rows for streaming');
+        // Phase 2: Prepare and preprocess data
+        $this->notifyProgress($progressCallback, 20.0, 'Loading and preprocessing dataset');
+        $preparedData = $this->dataPreparationService->prepare($dataset, $resolvedHyperparameters);
 
-        $splits = $this->dataPreprocessor->splitDataset($buffer, $resolvedHyperparameters['validation_split']);
+        $this->notifyProgress($progressCallback, 40.0, 'Dataset prepared for training');
 
-        // Free the original buffer after splitting
-        unset($buffer, $prepared['buffer']);
-
-        $this->notifyProgress($progressCallback, 40.0, 'Computed training splits and statistics');
-
-        $trainRaw = $this->dataPreprocessor->bufferToSamples($splits['train_buffer']);
-
-        // Free train buffer memory immediately
-        unset($splits['train_buffer']);
-
-        if (memory_get_usage(true) > 500 * 1024 * 1024) { // If using > 500MB
-            $memoryBefore = memory_get_usage(true);
-
-            Log::info('Dataset too large, sampling to 50%', [
-                'current_memory' => $memoryBefore,
-                'sample_count' => count($trainRaw['samples']),
-            ]);
-
-            // Keep references to originals for cleanup
-            $originalSamples = $trainRaw['samples'];
-            $originalLabels = $trainRaw['labels'];
-
-            $sampled = $this->dataPreprocessor->sampleDataset(
-                $originalSamples,
-                $originalLabels,
-                0.5
-            );
-
-            $trainRaw = $sampled;
-
-            // Explicitly free memory from original large dataset
-            unset($originalSamples, $originalLabels, $sampled);
-            gc_collect_cycles();
-
-            Log::info('Memory freed after sampling', [
-                'memory_before' => $memoryBefore,
-                'memory_after' => memory_get_usage(true),
-                'memory_freed' => $memoryBefore - memory_get_usage(true),
-            ]);
-        }
-
-        $validationRaw = $this->dataPreprocessor->bufferToSamples($splits['validation_buffer']);
-
-        // Free validation buffer memory
-        unset($splits['validation_buffer']);
-        gc_collect_cycles();
-
-        if ($trainRaw['samples'] === [] || $trainRaw['labels'] === []) {
-            throw new RuntimeException('Cannot train a model without features.');
-        }
-
+        // Phase 3: Grid search for best hyperparameters
+        $this->notifyProgress($progressCallback, 50.0, 'Running cross validation grid search');
         $progressNotifier = $this->buildProgressNotifier($progressCallback, $resolvedHyperparameters);
 
-        $this->notifyProgress($progressCallback, 50.0, 'Running cross validation grid search');
-
         $gridSearch = $this->gridSearchService->search(
-            $trainRaw['samples'],
-            $trainRaw['labels'],
+            $preparedData['train_samples'],
+            $preparedData['train_labels'],
             $resolvedHyperparameters,
             $progressNotifier
         );
@@ -189,33 +100,11 @@ class ModelTrainingService
         $finalHyperparameters = array_merge($resolvedHyperparameters, $bestParams);
         unset($finalHyperparameters['search_grid']);
 
-        // Free memory from grid search after extracting needed values
         unset($gridSearch);
         gc_collect_cycles();
 
-        $trainSamples = $trainRaw['samples'];
-        $trainLabels = $trainRaw['labels'];
-        $validationSamples = $validationRaw['samples'];
-        $validationLabels = $validationRaw['labels'];
-
-        // Free memory from raw data structures after extraction
-        unset($trainRaw, $validationRaw);
-        gc_collect_cycles();
-
-        $imputer = ImputerFactory::create($resolvedHyperparameters['imputation_strategy']);
-        $imputer->fit($trainSamples);
-        $imputer->transform($trainSamples);
-        $imputer->transform($validationSamples);
-
-        $trainSamples = $this->dataPreprocessor->applyStandardisation($trainSamples, $splits['means'], $splits['std_devs']);
-        $validationSamples = $this->dataPreprocessor->applyStandardisation($validationSamples, $splits['means'], $splits['std_devs']);
-
-        $normalizer = new Normalizer($resolvedHyperparameters['normalization']);
-        $this->dataPreprocessor->normaliseSamplesSafely($normalizer, $trainSamples);
-        $this->dataPreprocessor->normaliseSamplesSafely($normalizer, $validationSamples);
-
-        // Free memory after preprocessing
-        gc_collect_cycles();
+        // Phase 4: Train final classifier
+        $this->notifyProgress($progressCallback, 62.0, 'Training selected algorithm');
 
         $classifier = $this->classifierFactory->create(
             $resolvedHyperparameters['model_type'],
@@ -224,144 +113,100 @@ class ModelTrainingService
             $progressNotifier
         );
 
-        $this->notifyProgress($progressCallback, 62.0, 'Training selected algorithm');
-
-        $classifier->train($trainSamples, $trainLabels);
-
-        // Free memory after classifier training
+        $classifier->train($preparedData['train_samples'], $preparedData['train_labels']);
         gc_collect_cycles();
 
+        // Phase 5: Evaluate on validation set
         $this->notifyProgress($progressCallback, 75.0, 'Evaluating validation dataset');
 
-        $predicted = $classifier->predict($validationSamples);
-        $rawProbabilities = method_exists($classifier, 'predictProbabilities')
-            ? (array) $classifier->predictProbabilities($validationSamples)
-            : array_map(static fn (int $value): float => $value >= 1 ? 1.0 : 0.0, $predicted);
-        $probabilities = ProbabilityScoreExtractor::extractList($rawProbabilities);
+        $metrics = $this->evaluateModel(
+            $classifier,
+            $preparedData['validation_samples'],
+            $preparedData['validation_labels']
+        );
 
-        $classification = ClassificationReportGenerator::generate($validationLabels, $predicted);
-        $report = $classification['report'];
-        $confusion = $classification['confusion'];
-        $metrics = $this->metricsFormatter->format($report, $confusion, $probabilities, $validationLabels);
-
-        // Free memory from validation predictions
-        unset($predicted, $rawProbabilities, $probabilities, $classification, $report, $confusion);
-        gc_collect_cycles();
-
+        // Phase 6: Calculate feature importances
         $this->notifyProgress($progressCallback, 82.0, 'Computing feature importances');
 
-        $featureImportances = $this->featureImportanceCalculator->calculate($trainSamples, $trainLabels, $prepared['feature_names']);
+        $featureImportances = $this->featureImportanceCalculator->calculate(
+            $preparedData['train_samples'],
+            $preparedData['train_labels'],
+            $preparedData['feature_names']
+        );
 
-        // Free memory from training samples after feature importance calculation
-        unset($trainSamples, $trainLabels, $validationSamples, $validationLabels);
-        gc_collect_cycles();
-
+        // Phase 7: Persist model and artifacts
         $this->notifyProgress($progressCallback, 87.0, 'Persisting trained model');
 
-        $trainedAt = now();
-        $version = $trainedAt->format('YmdHis');
-        $artifactDirectory = sprintf('models/%s', $model->getKey());
-        $artifactPath = sprintf('%s/%s.json', $artifactDirectory, $version);
-        $modelFilePath = sprintf('%s/%s.model', $artifactDirectory, $version);
-
-        $disk->makeDirectory($artifactDirectory);
-
-        $artifact = [
-            'model_id' => $model->getKey(),
-            'training_run_id' => $run->getKey(),
-            'trained_at' => $trainedAt->toIso8601String(),
-            'model_type' => $resolvedHyperparameters['model_type'],
-            'feature_names' => $prepared['feature_names'],
-            'feature_means' => $splits['means'],
-            'feature_std_devs' => $splits['std_devs'],
-            'imputer' => [
-                'strategy' => $this->imputerResolver->describeStrategy($resolvedHyperparameters['imputation_strategy']),
-                'statistics' => $this->extractImputerStatistics($imputer),
-            ],
-            'categories' => $prepared['categories'],
-            'category_overflowed' => $prepared['category_overflowed'],
-            'hyperparameters' => $finalHyperparameters,
-            'metrics' => $metrics,
-            'grid_search' => $cvMetrics,
-            'normalization' => [
-                'type' => $this->normalizerResolver->describeType($resolvedHyperparameters['normalization']),
-            ],
-            'feature_importances' => $featureImportances,
-            'model_file' => $modelFilePath,
+        $trainingMetadata = [
+            'feature_names' => $preparedData['feature_names'],
+            'feature_means' => $preparedData['feature_means'],
+            'feature_std_devs' => $preparedData['feature_std_devs'],
+            'categories' => $preparedData['categories'],
+            'category_overflowed' => $preparedData['category_overflowed'],
         ];
 
-        $disk->put($artifactPath, json_encode($artifact, JSON_PRETTY_PRINT));
+        $persistence = $this->persistenceService->persist(
+            $model,
+            $run,
+            $classifier,
+            $preparedData['imputer'],
+            $trainingMetadata,
+            $metrics,
+            $finalHyperparameters,
+            $cvMetrics,
+            $featureImportances
+        );
 
-        if ($classifier instanceof PhpmlLogisticRegression && method_exists($classifier, 'setProgressCallback')) {
-            $classifier->setProgressCallback(null);
-        }
-
-        $modelManager = new ModelManager();
-        $modelManager->saveToFile($classifier, $disk->path($modelFilePath));
-
-        // Final cleanup after model persistence
-        unset($classifier, $imputer, $normalizer, $artifact);
+        // Cleanup
+        unset($classifier, $preparedData);
         gc_collect_cycles();
 
         $this->notifyProgress($progressCallback, 92.0, 'Recording training metadata');
 
         return [
             'metrics' => $metrics,
-            'artifact_path' => $artifactPath,
-            'version' => $version,
-            'metadata' => ['artifact_path' => $artifactPath],
+            'artifact_path' => $persistence['artifact_path'],
+            'version' => $persistence['version'],
+            'metadata' => ['artifact_path' => $persistence['artifact_path']],
             'hyperparameters' => $finalHyperparameters,
         ];
     }
 
     /**
-     * Extract statistics calculated by the imputer if available.
+     * Evaluate classifier on validation set.
      *
-     * @return list<float>
+     * @param object $classifier Trained classifier
+     * @param list<list<float>> $samples Validation samples
+     * @param list<int> $labels True labels
+     *
+     * @return array<string, mixed> Evaluation metrics
      */
-    private function extractImputerStatistics(Imputer $imputer): array
+    private function evaluateModel(object $classifier, array $samples, array $labels): array
     {
-        $statistics = null;
+        $predicted = $classifier->predict($samples);
 
-        if (method_exists($imputer, 'getStatistics')) {
-            $statistics = $imputer->getStatistics();
-        }
+        $rawProbabilities = method_exists($classifier, 'predictProbabilities')
+            ? (array) $classifier->predictProbabilities($samples)
+            : array_map(static fn (int $value): float => $value >= 1 ? 1.0 : 0.0, $predicted);
 
-        if ($statistics === null) {
-            $statistics = $this->readObjectProperty($imputer);
-        }
+        $probabilities = ProbabilityScoreExtractor::extractList($rawProbabilities);
 
-        if (! is_array($statistics)) {
-            return [];
-        }
+        $classification = ClassificationReportGenerator::generate($labels, $predicted);
+        $metrics = $this->metricsFormatter->format(
+            $classification['report'],
+            $classification['confusion'],
+            $probabilities,
+            $labels
+        );
 
-        return array_values(array_map('floatval', $statistics));
-    }
+        unset($predicted, $rawProbabilities, $probabilities, $classification);
+        gc_collect_cycles();
 
-    /**
-     * Attempt to read a property from an object, even if it is not publicly accessible.
-     */
-    private function readObjectProperty(object $object): mixed
-    {
-        $reflection = new ReflectionClass($object);
-
-        if (! $reflection->hasProperty('statistics')) {
-            return null;
-        }
-
-        $refProperty = $reflection->getProperty('statistics');
-
-        return $refProperty->getValue($object);
+        return $metrics;
     }
 
     /**
      * Notify progress via callback if provided.
-     *
-     * @param callable|null $callback
-     * @param float $progress
-     * @param string $message
-     *
-     * @return void
      */
     private function notifyProgress(?callable $callback, float $progress, string $message): void
     {
@@ -375,10 +220,10 @@ class ModelTrainingService
     /**
      * Build a progress notifier callback for training iterations.
      *
-     * @param callable|null $progressCallback
-     * @param array $hyperparameters
+     * @param callable|null $progressCallback Main progress callback
+     * @param array<string, mixed> $hyperparameters Hyperparameters
      *
-     * @return callable|null
+     * @return callable|null Progress notifier
      */
     private function buildProgressNotifier(?callable $progressCallback, array $hyperparameters): ?callable
     {
