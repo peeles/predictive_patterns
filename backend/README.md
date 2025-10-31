@@ -242,3 +242,61 @@ Long-running model training jobs should be isolated from the default queue so th
 - If no messages reach the worker logs, assume the process is being killed externally (for example, container memory limits or supervisor timeouts) and inspect the host's service manager or kernel logs.
 - The training service now profiles buffered features and will throw an exception if NaN or infinite values are encountered. Watch for warnings about near-constant or extremely large feature magnitudes—they indicate the dataset needs normalisation before retrying.
 - When diagnosing convergence issues, sample the dataset and retry with a much smaller file to confirm the algorithm completes. If the small run works but the full dataset does not, batch the training set or ingest data in windows to stay within memory and timeout budgets.
+
+
+Based on the project setup, here are the commands to run the test suite:
+
+Backend Tests (Laravel/Pest)
+
+# Run all tests
+docker compose exec backend php artisan test
+
+# Run all tests with coverage
+docker compose exec backend composer test:pest
+
+# Run specific test file
+docker compose exec backend php artisan test tests/Feature/HexAggregationTest.php
+
+# Run specific test class/method
+docker compose exec backend php artisan test --filter=ModelApiTest
+
+# Run tests without coverage (faster)
+docker compose exec backend php artisan test --no-coverage
+
+# Run unit tests only
+docker compose exec backend php artisan test tests/Unit
+
+# Run feature tests only
+docker compose exec backend php artisan test tests/Feature
+
+# From inside the backend container (after: make be)
+php artisan test
+composer test:pest
+
+Frontend Tests (Vitest + Playwright)
+
+# Inside frontend container (make fe) or locally
+npm run test:unit      # Vitest unit tests with coverage
+npm run test:e2e       # Playwright end-to-end tests
+
+Code Quality Checks
+
+# From inside backend container
+composer lint          # Check PSR-12 compliance
+composer lint:fix      # Auto-fix style issues
+composer analyse       # Run Larastan static analysis
+
+Quick Commands (Makefile)
+
+# From project root
+make be                # Enter backend container shell
+make fe                # Enter frontend container shell
+make fresh             # Reset database with seeders
+
+The most common command for running the full backend test suite is:
+
+docker compose exec backend php artisan test --no-coverage
+
+Or with coverage:
+
+docker compose exec backend composer test:pest

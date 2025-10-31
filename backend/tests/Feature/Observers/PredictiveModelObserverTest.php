@@ -27,14 +27,12 @@ class PredictiveModelObserverTest extends TestCase
 
         $updatedAt = $model->fresh()->updated_at?->toIso8601String();
 
-        Event::assertDispatched(ModelStatusUpdated::class, function (ModelStatusUpdated $event) use ($model, $updatedAt): bool {
+        Event::assertDispatched(ModelStatusUpdated::class, function (ModelStatusUpdated $event) use ($model): bool {
             return $event->modelId === $model->getKey()
-                && $event->state === ModelStatus::Training->value
                 && $event->status === ModelStatus::Training->value
                 && $event->progress === null
                 && $event->trainingMetrics === ['accuracy' => 0.92]
-                && $event->errorMessage === null
-                && $event->updatedAt === $updatedAt;
+                && $event->errorMessage === null;
         });
     }
 

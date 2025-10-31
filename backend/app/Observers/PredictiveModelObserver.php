@@ -36,17 +36,15 @@ class PredictiveModelObserver
         $progress = $this->resolveProgress($model);
         $metrics = $this->resolveTrainingMetrics($model);
         $errorMessage = $this->resolveErrorMessage($model, $state);
-        $updatedAt = optional($model->updated_at)->toIso8601String() ?? now()->toIso8601String();
 
         event(new ModelStatusUpdated(
             modelId: (string) $model->getKey(),
-            state: $state,
-            progress: $progress,
-            updatedAt: $updatedAt,
-            message: null,
             status: $status,
-            trainingMetrics: $metrics,
+            progress: $progress ?? 0.0,
+            message: null,
+            metrics: $metrics,
             errorMessage: $errorMessage,
+            trainingMetrics: $metrics,
         ));
     }
 
