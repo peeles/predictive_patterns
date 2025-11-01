@@ -1,6 +1,6 @@
 <?php
 
-namespace Feature\Listeners;
+namespace Tests\Feature\Listeners;
 
 use App\Models\PredictiveModel;
 use App\Models\User;

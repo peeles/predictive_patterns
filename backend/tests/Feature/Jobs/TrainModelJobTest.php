@@ -9,6 +9,7 @@ use App\Models\TrainingRun;
 use App\Services\ModelStatusService;
 use App\Services\ModelTrainingService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Queue;
 use Mockery;
 use Tests\TestCase;
@@ -49,6 +50,8 @@ class TrainModelJobTest extends TestCase
 
     public function test_job_updates_model_status_on_completion(): void
     {
+        Cache::spy(); // Spy on cache to prevent Redis connection issues in CI
+
         $model = PredictiveModel::factory()->create([
             'status' => ModelStatus::Draft,
             'metrics' => null,

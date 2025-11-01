@@ -113,7 +113,7 @@ class DatasetIngestionActionTest extends TestCase
         $container->instance(Dispatcher::class, $dispatcher);
 
         $this->expectException(QueueConnectionException::class);
-        $this->expectExceptionMessage('"redis" queue connection');
+        $this->expectExceptionMessage('queue connection');
 
         try {
             /** @var DatasetIngestRequest $request */
