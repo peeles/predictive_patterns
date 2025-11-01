@@ -9,6 +9,7 @@ use App\Models\TrainingRun;
 use App\Services\ModelStatusService;
 use App\Services\ModelTrainingService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Queue;
 use Mockery;
 use Tests\TestCase;
@@ -70,6 +71,13 @@ class TrainModelJobTest extends TestCase
         $statusService = Mockery::mock(ModelStatusService::class);
         $statusService->shouldReceive('markProgress')->atLeast()->once();
         $statusService->shouldReceive('markIdle')->once();
+
+        // Mock Cache to prevent Redis connection issues in CI
+        Cache::shouldReceive('put')->zeroOrMoreTimes();
+        Cache::shouldReceive('get')->zeroOrMoreTimes()->andReturn(null);
+        Cache::shouldReceive('remember')->zeroOrMoreTimes()->andReturnUsing(function ($key, $ttl, $callback) {
+            return $callback();
+        });
 
         (new TrainModelJob($run->id))->handle($trainingService, $statusService);
 

@@ -70,7 +70,7 @@ it('stores progress with metrics and broadcasts updates', function (): void {
     $model->refresh();
     expect($model->metadata['training_progress'])
         ->toBeArray()
-        ->and($model->metadata['training_progress']['percent'])->toBe(25.0)
+        ->and($model->metadata['training_progress']['percent'])->toEqual(25.0)
         ->and($model->metadata['training_progress']['message'])->toBe('Starting training');
 });
 

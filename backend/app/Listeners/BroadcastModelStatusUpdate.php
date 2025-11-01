@@ -38,7 +38,7 @@ class BroadcastModelStatusUpdate
 
         BroadcastDispatcher::dispatch($broadcastEvent, [
             'model_id' => $modelId,
-            'state' => $state,
+            'status' => $state,
             'progress' => $progress,
         ]);
     }

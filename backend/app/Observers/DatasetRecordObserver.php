@@ -81,7 +81,7 @@ class DatasetRecordObserver
             Log::debug('H3 aggregation cache invalidated', [
                 'event' => $event,
                 'record_count' => count($records),
-                'record_ids' => array_map(fn($r) => $r->id, $records),
+                'record_ids' => array_map(fn ($r) => $r->id, $records),
             ]);
         } catch (Throwable $exception) {
             // Log but don't fail the transaction if cache invalidation fails

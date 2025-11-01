@@ -4,6 +4,7 @@ namespace Tests;
 
 use App\Enums\Role;
 use App\Models\User;
+use App\Support\Broadcasting\BroadcastDispatcher;
 use App\Support\SanctumTokenManager;
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
 use Illuminate\Support\Facades\Facade;
@@ -36,6 +37,9 @@ abstract class TestCase extends BaseTestCase
         putenv('DB_DATABASE=:memory:');
 
         parent::setUp();
+
+        // Reset broadcast circuit breaker before each test
+        BroadcastDispatcher::resetSuppressedTransport();
 
         config([
             'cache.default' => 'array',

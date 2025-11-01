@@ -5,9 +5,8 @@ namespace App\Listeners;
 use App\Events\DatasetStatusChanged;
 use App\Events\DatasetStatusUpdated;
 use App\Support\Broadcasting\BroadcastDispatcher;
-use Illuminate\Contracts\Queue\ShouldQueue;
 
-class BroadcastDatasetStatus implements ShouldQueue
+class BroadcastDatasetStatus
 {
     public function handle(DatasetStatusChanged $event): void
     {

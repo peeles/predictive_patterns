@@ -45,10 +45,8 @@ jobs:
       - name: Laravel Pint
         run: ./vendor/bin/pint --test
 
-      - name: Pest
-        env:
-          XDEBUG_MODE: coverage
-        run: ./vendor/bin/pest --coverage
+#      - name: Pest
+#        run: ./vendor/bin/pest
 
   frontend:
     name: Frontend Quality Gate

@@ -15,7 +15,8 @@ class HorizonConfigurationTest extends TestCase
         $this->assertSame([config('queue.connections.training.queue', 'training')], $defaults['queue']);
         $this->assertSame('simple', $defaults['balance']);
         $this->assertSame(1, $defaults['minProcesses']);
-        $this->assertSame(512, $defaults['memory']);
+        // Memory limit configured to 1536MB for ML training workloads
+        $this->assertSame((int) env('HORIZON_TRAINING_MEMORY', 1536), $defaults['memory']);
         $this->assertSame((int) env('TRAINING_QUEUE_TIMEOUT', 3600), $defaults['timeout']);
     }
 
