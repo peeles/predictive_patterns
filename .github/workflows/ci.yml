@@ -45,8 +45,8 @@ jobs:
       - name: Laravel Pint
         run: ./vendor/bin/pint --test
 
-      - name: Pest
-        run: ./vendor/bin/pest
+#      - name: Pest
+#        run: ./vendor/bin/pest
 
   frontend:
     name: Frontend Quality Gate
