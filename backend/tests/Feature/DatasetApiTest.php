@@ -30,7 +30,9 @@ class DatasetApiTest extends TestCase
     {
         Storage::fake('local');
         Cache::flush();
-        Bus::fake();
+
+        // Use Queue::fake() instead of Bus::fake() to properly capture queued jobs
+        Queue::fake();
 
         $csv = "Type,Date\nEntry,2024-04-01T00:00:00+00:00\n";
         $file = UploadedFile::fake()->createWithContent('dataset.csv', $csv, 'text/csv');
@@ -48,12 +50,11 @@ class DatasetApiTest extends TestCase
         $response->assertJson(['success' => true]);
 
         $data = $response->json('data');
-        // When jobs are faked with Bus::fake(), the job might still run if queue is sync
-        // So status could be either 'processing' (async) or 'ready' (sync)
-        $this->assertContains($data['status'], [DatasetStatus::Processing->value, DatasetStatus::Ready->value]);
-        $this->assertIsInt($data['features_count']);
+        // When jobs are queued, status should be 'processing'
+        $this->assertSame(DatasetStatus::Processing->value, $data['status']);
+        $this->assertSame(0, $data['features_count']);
 
-        Bus::assertDispatched(CompleteDatasetIngestion::class, function (CompleteDatasetIngestion $job) use ($data): bool {
+        Queue::assertPushed(CompleteDatasetIngestion::class, function (CompleteDatasetIngestion $job) use ($data): bool {
             $chained = (function (): array {
                 return property_exists($this, 'chained') ? (array) $this->chained : [];
             })->call($job);
@@ -75,7 +76,10 @@ class DatasetApiTest extends TestCase
             return $job->datasetId === $data['id'] && $hasNotification;
         });
 
-        // Don't assert exact status in DB - could be processing or ready depending on queue driver
+        $this->assertDatabaseHas('datasets', [
+            'id' => $data['id'],
+            'status' => DatasetStatus::Processing->value,
+        ]);
     }
 
     public function test_dataset_ingest_finalises_when_queue_disabled(): void

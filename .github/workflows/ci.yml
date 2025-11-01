@@ -46,9 +46,7 @@ jobs:
         run: ./vendor/bin/pint --test
 
       - name: Pest
-        env:
-          XDEBUG_MODE: coverage
-        run: ./vendor/bin/pest --coverage
+        run: ./vendor/bin/pest
 
   frontend:
     name: Frontend Quality Gate

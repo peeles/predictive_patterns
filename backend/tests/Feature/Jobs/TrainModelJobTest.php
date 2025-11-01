@@ -50,8 +50,6 @@ class TrainModelJobTest extends TestCase
 
     public function test_job_updates_model_status_on_completion(): void
     {
-        Cache::spy(); // Spy on cache to prevent Redis connection issues in CI
-
         $model = PredictiveModel::factory()->create([
             'status' => ModelStatus::Draft,
             'metrics' => null,
@@ -73,6 +71,13 @@ class TrainModelJobTest extends TestCase
         $statusService = Mockery::mock(ModelStatusService::class);
         $statusService->shouldReceive('markProgress')->atLeast()->once();
         $statusService->shouldReceive('markIdle')->once();
+
+        // Mock Cache to prevent Redis connection issues in CI
+        Cache::shouldReceive('put')->zeroOrMoreTimes();
+        Cache::shouldReceive('get')->zeroOrMoreTimes()->andReturn(null);
+        Cache::shouldReceive('remember')->zeroOrMoreTimes()->andReturnUsing(function ($key, $ttl, $callback) {
+            return $callback();
+        });
 
         (new TrainModelJob($run->id))->handle($trainingService, $statusService);
 
