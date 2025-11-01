@@ -31,7 +31,10 @@ class DatasetApiTest extends TestCase
         Storage::fake('local');
         Cache::flush();
 
-        // Use Queue::fake() instead of Bus::fake() to properly capture queued jobs
+        // Set queue connection to 'redis' (non-sync) to trigger async job dispatch
+        config()->set('queue.default', 'redis');
+
+        // Use Queue::fake() to capture queued jobs
         Queue::fake();
 
         $csv = "Type,Date\nEntry,2024-04-01T00:00:00+00:00\n";
